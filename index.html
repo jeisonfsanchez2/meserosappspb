@@ -19,10 +19,18 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
+        /* Ajustes para evitar zoom y comportamiento nativo */
         input, textarea, button, select, a { -webkit-tap-highlight-color: transparent; }
-        body { touch-action: manipulation; }
+        body { touch-action: manipulation; overscroll-behavior-y: none; }
         .fade-in { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Animación de pulso para la alerta */
+        @keyframes urgent-pulse {
+            0%, 100% { background-color: #ef4444; }
+            50% { background-color: #b91c1c; }
+        }
+        .urgent-bg { animation: urgent-pulse 1s infinite; }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-900">
@@ -30,7 +38,7 @@
 
     <script type="text/babel" data-type="module">
         // ==========================================
-        // 1. CONFIGURACIÓN DE FIREBASE
+        // 1. CONFIGURACIÓN DE FIREBASE (PRODUCCIÓN)
         // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyC7Q5umjaggIFFCfVGF_voUFkOyGn4GOvw",
@@ -54,6 +62,7 @@
 
         const { useState, useEffect, useRef } = React;
 
+        // Inicializar Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -78,6 +87,7 @@
             return <span dangerouslySetInnerHTML={{ __html: svgHtml }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} />;
         };
 
+        // Iconos
         const Bell = (p) => <LucideIcon name="bell" {...p} />;
         const CheckCircle = (p) => <LucideIcon name="check-circle" {...p} />;
         const QrCode = (p) => <LucideIcon name="qr-code" {...p} />;
@@ -99,6 +109,7 @@
         const Volume2 = (p) => <LucideIcon name="volume-2" {...p} />;
         const Vibrate = (p) => <LucideIcon name="vibrate" {...p} />;
         const Smartphone = (p) => <LucideIcon name="smartphone" {...p} />;
+        const Radio = (p) => <LucideIcon name="radio" {...p} />;
 
         const BarLogo = ({ className = "", size = "h-16" }) => (
             <div className={`flex items-center justify-center ${className}`}>
@@ -110,23 +121,31 @@
         const audioCtxRef = { current: null };
         const oscillatorRef = { current: null };
         const intervalRef = { current: null };
+        const silentAudioRef = { current: null }; // Truco para mantener vivo el navegador
 
         const startPersistentAlarm = (soundEnabled = true) => {
+            // 1. Vibración (Siempre activa si el hardware lo permite)
             if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500, 1000]);
             
+            // 2. Audio
             if (soundEnabled) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
                 const ctx = audioCtxRef.current;
+                
+                // Intentar despertar el contexto
                 if (ctx.state === 'suspended') ctx.resume();
                 
                 if (!oscillatorRef.current) {
                     const oscillator = ctx.createOscillator();
                     const gainNode = ctx.createGain();
+                    
+                    // Configuración de Sirena
                     oscillator.type = 'sawtooth';
                     oscillator.frequency.setValueAtTime(800, ctx.currentTime);
                     oscillator.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.5);
                     gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+                    
                     oscillator.connect(gainNode);
                     gainNode.connect(ctx.destination);
                     oscillator.start();
@@ -134,13 +153,18 @@
                 }
             }
 
+            // 3. Loop de mantenimiento
             if (!intervalRef.current) {
                 intervalRef.current = setInterval(() => {
+                    // Refrescar sirena
                     if (oscillatorRef.current && soundEnabled) {
                         const ctx = audioCtxRef.current;
-                        oscillatorRef.current.frequency.setValueAtTime(800, ctx.currentTime);
-                        oscillatorRef.current.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.5);
+                        if (ctx.state === 'running') {
+                            oscillatorRef.current.frequency.setValueAtTime(800, ctx.currentTime);
+                            oscillatorRef.current.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.5);
+                        }
                     }
+                    // Refrescar vibración
                     if (navigator.vibrate) navigator.vibrate([500, 200]);
                 }, 1000);
             }
@@ -161,7 +185,7 @@
             const [view, setView] = useState('landing');
             const [activeTableName, setActiveTableName] = useState(null);
             
-            // ESTADOS FIREBASE
+            // ESTADOS
             const [requests, setRequests] = useState([]);
             const [activeSessions, setActiveSessions] = useState([]); 
             const [isStoreOpen, setIsStoreOpen] = useState(true);
@@ -170,9 +194,10 @@
             const [permissionError, setPermissionError] = useState(false); 
             const [isDemoMode, setIsDemoMode] = useState(false); 
             
-            // CONFIG ADMIN
-            const [soundEnabled, setSoundEnabled] = useState(true);
-            const [notifPermission, setNotifPermission] = useState("default");
+            // CONFIGURACIÓN ADMIN
+            const [soundEnabled, setSoundEnabled] = useState(true); 
+            const [notificationPermission, setNotificationPermission] = useState("default");
+            const [wakeLockActive, setWakeLockActive] = useState(false);
 
             // Estados Cliente
             const [cooldownSeconds, setCooldownSeconds] = useState(0);
@@ -194,21 +219,21 @@
                         setView('admin');
                     } else if (tableParam) {
                         setView('customer');
-                        setActiveTableName(tableParam);
-                        localStorage.setItem('bar_app_table_name', tableParam);
+                        handleTableSelection(tableParam); 
                     } else {
-                        setView('customer');
+                        setView('customer'); // Default a cliente
                         const savedTable = localStorage.getItem('bar_app_table_name');
                         if (savedTable) setActiveTableName(savedTable);
                     }
                     try { await signInAnonymously(auth); } catch (e) { console.error("Error Auth:", e); }
+                    if ("Notification" in window) setNotificationPermission(Notification.permission);
                 };
                 init();
                 const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
                 return () => unsubscribe();
             }, []);
 
-            // 2. Data Listeners
+            // 2. Data Listeners + NOTIFICACIONES
             useEffect(() => {
                 if (!user || isDemoMode) return;
                 
@@ -220,17 +245,18 @@
                         snapshot.forEach((doc) => loadedRequests.push({ id: doc.id, ...doc.data() }));
                         loadedRequests.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
                         
-                        // NOTIFICACIONES
+                        // Lógica de Notificación en Segundo Plano
                         const pendings = loadedRequests.filter(r => r.status === 'pending');
                         if (pendings.length > prevRequestsLength.current) {
+                            const newOrder = pendings[0];
                             if (document.hidden && Notification.permission === "granted") {
                                 try {
-                                    const notif = new Notification("¡PEDIDO NUEVO!", {
-                                        body: `Mesa: ${pendings[0].tableId}`,
+                                    new Notification("¡NUEVO PEDIDO!", { 
+                                        body: `Mesa: ${newOrder.tableId}${newOrder.message ? ' - ' + newOrder.message : ''}`,
                                         icon: "https://i.imgur.com/crEnZHt.png",
-                                        tag: "pedido-bar" // Evita spam, actualiza la existente
+                                        tag: "pedido-bar" // Evita spam, reemplaza la anterior si hay muchas
                                     });
-                                } catch(e) { console.log("Notif error", e); }
+                                } catch(e) { console.log("Error notif", e); }
                             }
                         }
                         prevRequestsLength.current = pendings.length;
@@ -239,14 +265,14 @@
                     (err) => { if (err.code === 'permission-denied') setPermissionError(true); }
                 );
 
-                // CONFIG GLOBAL
+                // ESTADO BAR
                 const settingsRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'app_settings', 'global');
                 const unsubSet = onSnapshot(settingsRef, (docSnap) => {
                     if (docSnap.exists()) setIsStoreOpen(docSnap.data().isOpen);
                     else setDoc(settingsRef, { isOpen: true }).catch(()=>{});
                 });
 
-                // MESAS ACTIVAS
+                // SESIONES ACTIVAS
                 const sessionsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions');
                 const unsubSess = onSnapshot(sessionsRef, (snapshot) => {
                     const loadedSessions = [];
@@ -258,40 +284,21 @@
                 return () => { unsubReq(); unsubSet(); unsubSess(); };
             }, [user, isDemoMode]);
 
-            // 3. REGISTRAR MESA ACTIVA (Corrección Crítica)
-            useEffect(() => {
-                // Solo si soy cliente, no es demo, tengo usuario y tengo mesa
-                if (view === 'customer' && !isDemoMode && user && activeTableName) {
-                    const registerSession = async () => {
-                        try {
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', activeTableName), {
-                                active: true,
-                                lastLogin: serverTimestamp(),
-                                userId: user.uid,
-                                id: activeTableName
-                            });
-                        } catch(e) { console.error("Error registrando mesa:", e); }
-                    };
-                    registerSession();
-                }
-            }, [view, isDemoMode, user, activeTableName]);
-
-            // 4. Listener Cliente: Cierre Remoto
+            // 3. Listener Cliente
             useEffect(() => {
                 if (!user || isDemoMode || view !== 'customer' || !activeTableName) return;
                 const mySessionRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', activeTableName);
                 const unsubMySession = onSnapshot(mySessionRef, (docSnap) => {
-                    // Si el doc desaparece y yo sigo aquí, me sacaron
-                    if (!docSnap.exists() && activeTableName) {
+                    if (!docSnap.exists()) {
                         setActiveTableName(null);
                         localStorage.removeItem('bar_app_table_name');
-                        alert("Mesa liberada por el administrador.");
+                        alert("Mesa liberada por administración.");
                     }
                 });
                 return () => unsubMySession();
             }, [user, activeTableName, view, isDemoMode]);
 
-            // 5. Alarma
+            // 4. Control Alarma
             useEffect(() => {
                 const pending = requests.filter(r => r.status === 'pending');
                 if (pending.length > 0 && view === 'admin' && isSystemActive) {
@@ -308,22 +315,36 @@
             
             const activateSystem = async () => {
                 setIsSystemActive(true);
+                
+                // 1. Audio Context
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 ctx.resume();
                 audioCtxRef.current = ctx;
-                
-                // Pedir permiso notificaciones explícitamente
-                if ("Notification" in window) {
-                    const permission = await Notification.requestPermission();
-                    setNotifPermission(permission);
+
+                // 2. Audio Silencioso (Truco para mantener app viva en segundo plano)
+                if (!silentAudioRef.current) {
+                    const silentAudio = new Audio("data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==");
+                    silentAudio.loop = true;
+                    silentAudio.volume = 0.01;
+                    silentAudio.play().catch(e => console.log("Audio bg error", e));
+                    silentAudioRef.current = silentAudio;
                 }
 
-                // Activar Wake Lock
+                // 3. Permisos de Notificación
+                if ("Notification" in window) {
+                    const perm = await Notification.requestPermission();
+                    setNotificationPermission(perm);
+                }
+
+                // 4. Wake Lock (Pantalla Encendida)
                 try { 
                     if ('wakeLock' in navigator) {
-                        await navigator.wakeLock.request('screen'); 
+                        const lock = await navigator.wakeLock.request('screen');
+                        setWakeLockActive(true);
+                        // Si se pierde el foco y se suelta, intentar recuperarlo al volver
+                        lock.addEventListener('release', () => setWakeLockActive(false));
                     }
-                } catch (err) { console.log("Wake Lock error:", err); }
+                } catch (err) { console.log("Wake Lock no soportado", err); }
             };
 
             const toggleStoreStatus = async () => {
@@ -331,21 +352,21 @@
                 if (confirm(newState ? "¿ABRIR el bar?" : "¿CERRAR el bar?")) {
                     if (isDemoMode) { setIsStoreOpen(newState); return; }
                     try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'app_settings', 'global'), { isOpen: newState }); } 
-                    catch(e) { alert("Error de permisos."); }
+                    catch(e) { alert("Error permisos."); }
                 }
             };
 
             const closeTableSession = async (tableId) => {
-                if(!confirm(`¿Liberar ${tableId}?`)) return;
-                try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', tableId)); } catch(e) {}
+                if(!confirm(`¿Liberar mesa: ${tableId}?`)) return;
+                try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', tableId)); } catch(e) { console.error(e); }
             };
 
             const closeAllSessions = async () => {
-                if(!confirm("¿Liberar TODAS las mesas?")) return;
+                if(!confirm("¿Desconectar TODAS las mesas?")) return;
                 try {
-                    const q = await getDocs(collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions'));
-                    q.forEach((docSnap) => deleteDoc(docSnap.ref));
-                } catch(e) {}
+                    const querySnapshot = await getDocs(collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions'));
+                    querySnapshot.forEach((docSnap) => { deleteDoc(docSnap.ref); });
+                } catch(e) { console.error(e); }
             };
 
             const startCooldown = () => {
@@ -356,10 +377,19 @@
                 }, 1000);
             };
 
-            const handleTableSelection = (tableName) => {
+            const handleTableSelection = async (tableName) => {
                 setActiveTableName(tableName);
                 localStorage.setItem('bar_app_table_name', tableName);
                 setShowCustomInput(false);
+                if (!isDemoMode && user) {
+                    try {
+                        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', tableName), {
+                            active: true,
+                            id: tableName,
+                            lastLogin: serverTimestamp()
+                        });
+                    } catch(e) {}
+                }
             };
 
             const handleResetTable = () => {
@@ -375,11 +405,12 @@
                 setIsSending(true);
 
                 if (isDemoMode) {
-                    // Demo Logic
                     setTimeout(() => {
                         const newReq = { id: Math.random().toString(), tableId: activeTableName, status: 'pending', timestamp: { seconds: Date.now()/1000 }, message: msg };
                         setRequests(prev => [newReq, ...prev]);
-                        startCooldown(); setCustomOrderText(''); setIsSending(false);
+                        startCooldown();
+                        setCustomOrderText('');
+                        setIsSending(false);
                     }, 500);
                     return;
                 }
@@ -404,13 +435,15 @@
 
             const handleCompleteRequest = async (id) => {
                 if (isDemoMode) { setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'completed' } : r)); return; }
-                try { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests', id), { status: 'completed' }); } catch(e) {}
+                try { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests', id), { status: 'completed' }); } 
+                catch(e) {}
             };
 
             const handleSimulateRequest = async () => {
                 if (isDemoMode) {
                     const newReq = { id: Math.random().toString(), tableId: 'Mesa Prueba', status: 'pending', timestamp: { seconds: Date.now()/1000 }, message: 'Simulacro Demo' };
-                    setRequests(prev => [newReq, ...prev]); return;
+                    setRequests(prev => [newReq, ...prev]);
+                    return;
                 }
                 try {
                     await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests'), {
@@ -460,52 +493,57 @@
                         <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-white text-center font-sans">
                             <BarLogo size="h-24" className="mb-6" />
                             <h2 className="text-2xl font-bold mb-4">Activar Alertas</h2>
-                            <p className="text-slate-400 mb-8">Debes activar el sistema para recibir sonido y notificaciones.</p>
+                            <p className="text-slate-400 mb-8 max-w-xs">Toca para activar el sonido, notificaciones y evitar que el celular se bloquee.</p>
                             <button onClick={activateSystem} className="w-full max-w-sm bg-blue-600 text-white font-bold py-4 px-8 rounded-full shadow-lg animate-bounce">INICIAR TURNO</button>
+                            
+                            <div className="mt-6 text-xs text-slate-500 border-t border-slate-800 pt-4 w-full text-center">
+                                <p>Notificaciones: <span className={notificationPermission==='granted'?'text-green-400':'text-red-400'}>{notificationPermission === 'granted' ? 'ACTIVAS' : 'INACTIVAS'}</span></p>
+                            </div>
                         </div>
                     );
                 }
                 return (
-                    <div className={`min-h-screen transition-colors duration-300 ${pendingRequests.length > 0 ? 'bg-red-50' : 'bg-white'} font-sans flex flex-col`}>
+                    <div className={`min-h-screen transition-colors duration-300 ${pendingRequests.length > 0 ? 'bg-red-50 urgent-bg' : 'bg-white'} font-sans flex flex-col`}>
                         <header className={`${pendingRequests.length > 0 ? 'bg-red-600' : 'bg-slate-900'} text-white p-4 shadow-md transition-colors duration-300`}>
                             <div className="flex justify-between items-center mb-2">
                                 <div className="flex items-center gap-2"><BarLogo size="h-8" className={pendingRequests.length>0?"animate-bounce":""} /> <span className="font-bold">Admin</span></div>
-                                
-                                <div className="flex gap-2">
-                                    <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-2 rounded-full transition-colors ${soundEnabled ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
-                                        {soundEnabled ? <Volume2 size={20} /> : <Vibrate size={20} />}
-                                    </button>
-                                </div>
+                                <button onClick={() => setSoundEnabled(!soundEnabled)} className="bg-black/30 p-2 rounded-full hover:bg-black/50 transition-colors">
+                                    {soundEnabled ? <Volume2 size={20} /> : <Vibrate size={20} />}
+                                </button>
                             </div>
-                            
                             <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
                                 <button onClick={toggleStoreStatus} className={`text-xs font-bold px-3 py-2 rounded-lg border flex items-center gap-2 whitespace-nowrap ${isStoreOpen ? 'bg-red-900 border-red-700' : 'bg-green-700 border-green-600'}`}>
                                     <Power size={14} /> {isStoreOpen ? 'CERRAR TURNO' : 'ABRIR BAR'}
                                 </button>
                                 <div className="bg-black/30 text-xs px-3 py-2 rounded-lg flex items-center gap-2 border border-white/20">
-                                    <Bell size={14} /> {pendingRequests.length}
+                                    <Bell size={14} /> {pendingRequests.length} Pedidos
+                                </div>
+                                <div className={`text-xs px-3 py-2 rounded-lg flex items-center gap-2 border border-white/20 ${wakeLockActive ? 'bg-yellow-600/50' : 'bg-gray-700/50'}`}>
+                                    <Sun size={14} /> {wakeLockActive ? 'Pantalla ON' : 'Normal'}
                                 </div>
                             </div>
                         </header>
 
                         <main className="flex-1 p-4 overflow-y-auto">
-                            {/* MESAS ACTIVAS */}
+                            {/* MONITOR DE MESAS */}
                             <div className="mb-8">
                                 <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-gray-500 text-sm uppercase flex items-center gap-2"><Smartphone size={16}/> Mesas ({activeSessions.length})</h3>
-                                    {activeSessions.length > 0 && <button onClick={closeAllSessions} className="text-xs text-red-500 font-bold underline">Liberar Todas</button>}
+                                    <h3 className="font-bold text-gray-500 text-sm uppercase flex items-center gap-2">
+                                        <Smartphone size={16}/> Mesas Conectadas ({activeSessions.length})
+                                    </h3>
+                                    {activeSessions.length > 0 && <button onClick={closeAllSessions} className="text-xs text-red-500 hover:text-red-700 font-bold underline">Liberar Todas</button>}
                                 </div>
                                 {activeSessions.length === 0 ? (
-                                    <div className="text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-400 text-sm">Sin mesas conectadas</div>
+                                    <div className="text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-400 text-sm">No hay clientes conectados</div>
                                 ) : (
                                     <div className="grid grid-cols-2 gap-3">
                                         {activeSessions.map(session => (
                                             <div key={session.id} className="bg-white border border-gray-200 p-3 rounded-lg shadow-sm flex justify-between items-center">
-                                                <div className="flex items-center gap-2 overflow-hidden">
-                                                    <div className={`w-3 h-3 rounded-full flex-shrink-0 ${session.id.includes('Amarilla') ? 'bg-yellow-400' : session.id.includes('Verde') ? 'bg-green-500' : session.id.includes('Azul') ? 'bg-blue-600' : session.id.includes('Roja') ? 'bg-red-600' : 'bg-slate-400'}`}></div>
-                                                    <span className="font-bold text-xs text-gray-700 truncate">{session.id}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`w-3 h-3 rounded-full ${session.id.includes('Amarilla') ? 'bg-yellow-400' : session.id.includes('Verde') ? 'bg-green-500' : session.id.includes('Azul') ? 'bg-blue-600' : session.id.includes('Roja') ? 'bg-red-600' : 'bg-slate-400'}`}></div>
+                                                    <span className="font-bold text-sm text-gray-700 truncate max-w-[80px]">{session.id}</span>
                                                 </div>
-                                                <button onClick={() => closeTableSession(session.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+                                                <button onClick={() => closeTableSession(session.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={16} /></button>
                                             </div>
                                         ))}
                                     </div>
@@ -513,13 +551,13 @@
                             </div>
 
                             <hr className="my-6 border-gray-200" />
-                            <h3 className="font-bold text-gray-500 text-sm uppercase mb-3 flex items-center gap-2"><Bell size={16}/> Pedidos Pendientes</h3>
+                            <h3 className="font-bold text-gray-500 text-sm uppercase mb-3 flex items-center gap-2"><Bell size={16}/> Cola de Pedidos</h3>
 
                             {pendingRequests.length === 0 ? (
                                 <div className="text-center py-10 opacity-50">
                                     <CheckCircle size={60} className="mx-auto text-gray-300 mb-2" />
-                                    <p className="text-gray-400 font-bold">Todo tranquilo</p>
-                                    <button onClick={handleSimulateRequest} className="mt-4 text-xs bg-gray-200 px-3 py-1 rounded text-gray-500">Test Sonido</button>
+                                    <p className="text-gray-400 font-bold">Sin pedidos pendientes</p>
+                                    <button onClick={handleSimulateRequest} className="mt-4 text-xs bg-gray-200 px-3 py-1 rounded text-gray-500">Probar Notificación</button>
                                 </div>
                             ) : (
                                 <div className="space-y-4">
@@ -542,7 +580,7 @@
                 );
             }
 
-            // Cliente (Igual que antes)
+            // Cliente (Igual)
             if (view === 'customer') {
                 if (!activeTableName) {
                     return (
