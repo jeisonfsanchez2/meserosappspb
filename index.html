@@ -3,43 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Bar Sanchez - Service Link</title>
+    <title>Bar Sanchez - Service Link [MEJORADO]</title>
     
-    <!-- 1. Estilos: Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. React y ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
-    <!-- 3. Babel para traducir el código -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- 4. Librería de Iconos Lucide -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
-        /* Ajustes para evitar zoom y comportamiento nativo */
         input, textarea, button, select, a { -webkit-tap-highlight-color: transparent; }
         body { touch-action: manipulation; overscroll-behavior-y: none; }
-        .fade-in { animation: fadeIn 0.5s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        
-        /* Animación de pulso para la alerta */
-        @keyframes urgent-pulse {
-            0%, 100% { background-color: #ef4444; }
-            50% { background-color: #b91c1c; }
-        }
+        .fade-in { animation: fadeIn 0.8s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes urgent-pulse { 0%, 100% { background-color: #ef4444; } 50% { background-color: #b91c1c; } }
         .urgent-bg { animation: urgent-pulse 1s infinite; }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-900">
+<body class="bg-slate-900">
     <div id="root"></div>
-
     <script type="text/babel" data-type="module">
-        // ==========================================
-        // 1. CONFIGURACIÓN DE FIREBASE (PRODUCCIÓN)
-        // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyC7Q5umjaggIFFCfVGF_voUFkOyGn4GOvw",
             authDomain: "meserospb-ea0f8.firebaseapp.com",
@@ -48,588 +31,722 @@
             messagingSenderId: "602960463994",
             appId: "1:602960463994:web:069fe52c5a84c0a11b53c3"
         };
-        
         const APP_ID = "bar-sanchez-prod-v1";
-        // ==========================================
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { 
-            getFirestore, collection, addDoc, updateDoc, doc, onSnapshot, serverTimestamp, setDoc, deleteDoc, getDocs 
-        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        import { 
-            getAuth, signInAnonymously, onAuthStateChanged 
-        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, updateDoc, doc, onSnapshot, serverTimestamp, setDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const { useState, useEffect, useRef } = React;
-
-        // Inicializar Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // --- HELPER ICONOS ---
-        const LucideIcon = ({ name, size = 24, className = "" }) => {
-            const [svgHtml, setSvgHtml] = useState(null);
-            useEffect(() => {
-                const pascalName = name.replace(/(^\w|-\w)/g, (clear) => clear.replace('-', '').toUpperCase());
-                if (window.lucide && window.lucide.icons && window.lucide.icons[pascalName]) {
-                    const iconDef = window.lucide.icons[pascalName];
-                    if (typeof window.lucide.createElement === 'function') {
-                        const svgElement = window.lucide.createElement(iconDef);
-                        svgElement.setAttribute('width', size);
-                        svgElement.setAttribute('height', size);
-                        if (className) svgElement.setAttribute('class', className);
-                        setSvgHtml(svgElement.outerHTML);
-                    }
-                }
-            }, [name, size, className]);
-            if (!svgHtml) return <span className="inline-block w-6 h-6"></span>;
-            return <span dangerouslySetInnerHTML={{ __html: svgHtml }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} />;
+        // ============================================
+        // MEJORA 1: SERVICE WORKER PARA NOTIFICACIONES
+        // ============================================
+        let swRegistration = null;
+        const registerServiceWorker = async () => {
+            if (!('serviceWorker' in navigator)) {
+                console.log('Service Worker no soportado');
+                return null;
+            }
+            try {
+                const swCode = `
+                    self.addEventListener('push', (e) => {
+                        const data = e.data ? e.data.json() : {};
+                        e.waitUntil(
+                            self.registration.showNotification(data.title || '🔔 Bar Sanchez', {
+                                body: data.body || 'Nueva solicitud',
+                                icon: 'https://i.imgur.com/crEnZHt.png',
+                                badge: 'https://i.imgur.com/crEnZHt.png',
+                                tag: 'bar-pedido',
+                                requireInteraction: true,
+                                vibrate: [300, 100, 300, 100, 300],
+                                silent: false,
+                                renotify: true
+                            })
+                        );
+                    });
+                    self.addEventListener('notificationclick', (e) => {
+                        e.notification.close();
+                        e.waitUntil(clients.openWindow('/'));
+                    });
+                `;
+                const blob = new Blob([swCode], { type: 'application/javascript' });
+                const reg = await navigator.serviceWorker.register(URL.createObjectURL(blob));
+                console.log('✅ Service Worker registrado');
+                return reg;
+            } catch (e) {
+                console.error('Error SW:', e);
+                return null;
+            }
         };
 
-        // Iconos
+        // ============================================
+        // MEJORA 2: NOTIFICACIONES PERSISTENTES
+        // ============================================
+        const showPersistentNotification = async (title, body, tag) => {
+            if (Notification.permission !== 'granted') return;
+            
+            if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
+            
+            if (swRegistration) {
+                try {
+                    await swRegistration.showNotification(title, {
+                        body: body,
+                        icon: 'https://i.imgur.com/crEnZHt.png',
+                        badge: 'https://i.imgur.com/crEnZHt.png',
+                        tag: tag || 'bar-pedido',
+                        requireInteraction: true,
+                        vibrate: [400, 200, 400, 200, 400],
+                        silent: false,
+                        renotify: true,
+                        timestamp: Date.now()
+                    });
+                    console.log('✅ Notificación enviada con SW');
+                    return;
+                } catch(e) { 
+                    console.log('SW notification failed:', e); 
+                }
+            }
+            
+            const n = new Notification(title, {
+                body: body,
+                icon: 'https://i.imgur.com/crEnZHt.png',
+                tag: tag,
+                requireInteraction: true,
+                vibrate: [400, 200, 400],
+                silent: false
+            });
+            n.onclick = () => { window.focus(); n.close(); };
+        };
+
+        // Iconos simplificados
+        const LucideIcon = ({ name, size = 24, className = "" }) => {
+            const [svg, setSvg] = useState(null);
+            useEffect(() => {
+                const pName = name.replace(/(^\w|-\w)/g, (c) => c.replace('-', '').toUpperCase());
+                if (window.lucide?.icons?.[pName] && window.lucide.createElement) {
+                    const el = window.lucide.createElement(window.lucide.icons[pName]);
+                    el.setAttribute('width', size);
+                    el.setAttribute('height', size);
+                    if (className) el.setAttribute('class', className);
+                    setSvg(el.outerHTML);
+                }
+            }, [name, size, className]);
+            return svg ? <span dangerouslySetInnerHTML={{ __html: svg }} style={{ display: 'inline-flex', alignItems: 'center' }} /> : <span className="w-6 h-6 inline-block"></span>;
+        };
+
         const Bell = (p) => <LucideIcon name="bell" {...p} />;
         const CheckCircle = (p) => <LucideIcon name="check-circle" {...p} />;
-        const QrCode = (p) => <LucideIcon name="qr-code" {...p} />;
-        const AlertCircle = (p) => <LucideIcon name="alert-circle" {...p} />;
         const VolumeX = (p) => <LucideIcon name="volume-x" {...p} />;
-        const LogOut = (p) => <LucideIcon name="log-out" {...p} />;
-        const Beer = (p) => <LucideIcon name="beer" {...p} />;
-        const Send = (p) => <LucideIcon name="send" {...p} />;
-        const Clock = (p) => <LucideIcon name="clock" {...p} />;
-        const Edit2 = (p) => <LucideIcon name="edit-2" {...p} />;
-        const MapPin = (p) => <LucideIcon name="map-pin" {...p} />;
-        const PlayCircle = (p) => <LucideIcon name="play-circle" {...p} />;
         const Power = (p) => <LucideIcon name="power" {...p} />;
-        const Moon = (p) => <LucideIcon name="moon" {...p} />;
-        const Lock = (p) => <LucideIcon name="lock" {...p} />;
-        const WifiOff = (p) => <LucideIcon name="wifi-off" {...p} />;
-        const Sun = (p) => <LucideIcon name="sun" {...p} />;
-        const Trash2 = (p) => <LucideIcon name="trash-2" {...p} />;
         const Volume2 = (p) => <LucideIcon name="volume-2" {...p} />;
         const Vibrate = (p) => <LucideIcon name="vibrate" {...p} />;
         const Smartphone = (p) => <LucideIcon name="smartphone" {...p} />;
-        const Radio = (p) => <LucideIcon name="radio" {...p} />;
+        const PauseCircle = (p) => <LucideIcon name="pause-circle" {...p} />;
+        const Trash2 = (p) => <LucideIcon name="trash-2" {...p} />;
+        const Sun = (p) => <LucideIcon name="sun" {...p} />;
+        const MapPin = (p) => <LucideIcon name="map-pin" {...p} />;
+        const Edit2 = (p) => <LucideIcon name="edit-2" {...p} />;
+        const Clock = (p) => <LucideIcon name="clock" {...p} />;
+        const Beer = (p) => <LucideIcon name="beer" {...p} />;
+        const Send = (p) => <LucideIcon name="send" {...p} />;
 
-        const BarLogo = ({ className = "", size = "h-16" }) => (
-            <div className={`flex items-center justify-center ${className}`}>
-                <img src="https://i.imgur.com/crEnZHt.png" alt="Bar Sanchez" className={`${size} w-auto rounded-lg shadow-lg border-2 border-slate-800`} onError={(e) => { e.currentTarget.src = 'https://placehold.co/100x100/e2e8f0/1e293b?text=BAR'; }} />
+        const BarLogo = ({ size = "h-16" }) => (
+            <div className="flex items-center justify-center">
+                <img src="https://i.imgur.com/crEnZHt.png" alt="Bar" className={`${size} w-auto rounded-lg shadow-lg border-2 border-slate-800`} />
             </div>
         );
 
-        // --- MOTOR DE AUDIO ---
-        const audioCtxRef = { current: null };
-        const oscillatorRef = { current: null };
-        const intervalRef = { current: null };
-        const silentAudioRef = { current: null }; // Truco para mantener vivo el navegador
+        // Motor de audio simplificado
+        const audioCtx = { current: null };
+        const osc = { current: null };
+        const intv = { current: null };
+        const silent = { current: null };
 
-        const startPersistentAlarm = (soundEnabled = true) => {
-            // 1. Vibración (Siempre activa si el hardware lo permite)
-            if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500, 1000]);
-            
-            // 2. Audio
-            if (soundEnabled) {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-                const ctx = audioCtxRef.current;
-                
-                // Intentar despertar el contexto
+        const startAlarm = (sound, muted) => {
+            if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+            if (sound && !muted) {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (!audioCtx.current) audioCtx.current = new AC();
+                const ctx = audioCtx.current;
                 if (ctx.state === 'suspended') ctx.resume();
-                
-                if (!oscillatorRef.current) {
-                    const oscillator = ctx.createOscillator();
-                    const gainNode = ctx.createGain();
-                    
-                    // Configuración de Sirena
-                    oscillator.type = 'sawtooth';
-                    oscillator.frequency.setValueAtTime(800, ctx.currentTime);
-                    oscillator.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.5);
-                    gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
-                    
-                    oscillator.connect(gainNode);
-                    gainNode.connect(ctx.destination);
-                    oscillator.start();
-                    oscillatorRef.current = oscillator;
+                if (!osc.current) {
+                    const o = ctx.createOscillator();
+                    const g = ctx.createGain();
+                    o.type = 'sawtooth';
+                    o.frequency.setValueAtTime(800, ctx.currentTime);
+                    o.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.5);
+                    g.gain.setValueAtTime(0.5, ctx.currentTime);
+                    o.connect(g);
+                    g.connect(ctx.destination);
+                    o.start();
+                    osc.current = o;
                 }
+            } else {
+                if (osc.current) { try { osc.current.stop(); osc.current.disconnect(); } catch(e){} osc.current = null; }
             }
-
-            // 3. Loop de mantenimiento
-            if (!intervalRef.current) {
-                intervalRef.current = setInterval(() => {
-                    // Refrescar sirena
-                    if (oscillatorRef.current && soundEnabled) {
-                        const ctx = audioCtxRef.current;
-                        if (ctx.state === 'running') {
-                            oscillatorRef.current.frequency.setValueAtTime(800, ctx.currentTime);
-                            oscillatorRef.current.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.5);
-                        }
+            if (!intv.current) {
+                intv.current = setInterval(() => {
+                    if (osc.current && sound && !muted && audioCtx.current?.state === 'running') {
+                        osc.current.frequency.setValueAtTime(800, audioCtx.current.currentTime);
+                        osc.current.frequency.linearRampToValueAtTime(1200, audioCtx.current.currentTime + 0.5);
                     }
-                    // Refrescar vibración
                     if (navigator.vibrate) navigator.vibrate([500, 200]);
                 }, 1000);
             }
         };
 
-        const stopPersistentAlarm = () => {
+        const stopAlarm = () => {
             if (navigator.vibrate) navigator.vibrate(0);
-            if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-            if (oscillatorRef.current) { 
-                try { oscillatorRef.current.stop(); oscillatorRef.current.disconnect(); } catch(e){} 
-                oscillatorRef.current = null; 
-            }
+            if (intv.current) { clearInterval(intv.current); intv.current = null; }
+            if (osc.current) { try { osc.current.stop(); osc.current.disconnect(); } catch(e){} osc.current = null; }
         };
 
-        // --- APP PRINCIPAL ---
+        // APP SIMPLIFICADA
         function App() {
             const [user, setUser] = useState(null);
-            const [view, setView] = useState('landing');
-            const [activeTableName, setActiveTableName] = useState(null);
-            
-            // ESTADOS
+            const [view, setView] = useState('customer'); // Cambiado a 'customer' por defecto
+            const [activeTable, setActiveTable] = useState(null);
             const [requests, setRequests] = useState([]);
-            const [activeSessions, setActiveSessions] = useState([]); 
-            const [isStoreOpen, setIsStoreOpen] = useState(true);
-            const [isSystemActive, setIsSystemActive] = useState(false);
+            const [sessions, setSessions] = useState([]); 
+            const [isActive, setIsActive] = useState(false);
             const [loading, setLoading] = useState(true);
-            const [permissionError, setPermissionError] = useState(false); 
-            const [isDemoMode, setIsDemoMode] = useState(false); 
-            
-            // CONFIGURACIÓN ADMIN
-            const [soundEnabled, setSoundEnabled] = useState(true); 
-            const [notificationPermission, setNotificationPermission] = useState("default");
-            const [wakeLockActive, setWakeLockActive] = useState(false);
+            const [sound, setSound] = useState(true); 
+            const [muted, setMuted] = useState(false);
+            const [notifPerm, setNotifPerm] = useState("default");
+            const [swReady, setSwReady] = useState(false);
+            const [cooldown, setCooldown] = useState(0);
+            const [customText, setCustomText] = useState('');
+            const [sending, setSending] = useState(false);
+            const [showInput, setShowInput] = useState(false);
+            const [tempName, setTempName] = useState('');
+            const prevLen = useRef(0);
+            const cdRef = useRef(null);
 
-            // Estados Cliente
-            const [cooldownSeconds, setCooldownSeconds] = useState(0);
-            const [customOrderText, setCustomOrderText] = useState('');
-            const [isSending, setIsSending] = useState(false);
-            const [showCustomInput, setShowCustomInput] = useState(false);
-            const [tempCustomName, setTempCustomName] = useState('');
-            const cooldownIntervalRef = useRef(null);
-            const prevRequestsLength = useRef(0);
-
-            // 1. INICIALIZACIÓN
             useEffect(() => {
                 const init = async () => {
                     const params = new URLSearchParams(window.location.search);
-                    const modeParam = params.get('mode');
-                    const tableParam = params.get('table');
-
-                    if (modeParam === 'admin') {
+                    const mode = params.get('mode');
+                    const table = params.get('table');
+                    
+                    if (mode === 'admin') {
                         setView('admin');
-                    } else if (tableParam) {
+                        const reg = await registerServiceWorker();
+                        if (reg) { 
+                            swRegistration = reg; 
+                            setSwReady(true);
+                            console.log('✅ SW listo');
+                        }
+                    } else if (table) {
                         setView('customer');
-                        handleTableSelection(tableParam); 
+                        // Aquí iría la lógica para seleccionar mesa desde URL
                     } else {
-                        setView('customer'); // Default a cliente
-                        const savedTable = localStorage.getItem('bar_app_table_name');
-                        if (savedTable) setActiveTableName(savedTable);
+                        // Por defecto muestra la vista de cliente
+                        setView('customer');
+                        const saved = localStorage.getItem('bar_app_table_name');
+                        if (saved) setActiveTable(saved);
                     }
-                    try { await signInAnonymously(auth); } catch (e) { console.error("Error Auth:", e); }
-                    if ("Notification" in window) setNotificationPermission(Notification.permission);
+                    
+                    try { await signInAnonymously(auth); } catch (e) {}
+                    if ("Notification" in window) setNotifPerm(Notification.permission);
                 };
                 init();
-                const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
-                return () => unsubscribe();
+                const unsub = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
+                return unsub;
             }, []);
 
-            // 2. Data Listeners + NOTIFICACIONES
+            // ============================================
+            // MEJORA 3: DETECTOR DE NUEVOS PEDIDOS
+            // ============================================
             useEffect(() => {
-                if (!user || isDemoMode) return;
+                if (!user || view !== 'admin') return;
                 
-                // PEDIDOS
-                const requestsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests');
-                const unsubReq = onSnapshot(requestsRef, (snapshot) => {
-                        setPermissionError(false);
-                        const loadedRequests = [];
-                        snapshot.forEach((doc) => loadedRequests.push({ id: doc.id, ...doc.data() }));
-                        loadedRequests.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                const reqRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests');
+                const unsubReq = onSnapshot(reqRef, (snap) => {
+                    const loaded = [];
+                    snap.forEach((d) => loaded.push({ id: d.id, ...d.data() }));
+                    loaded.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                    
+                    const pending = loaded.filter(r => r.status === 'pending');
+                    
+                    // DETECCIÓN: Nuevo pedido cuando aumenta la cantidad
+                    if (pending.length > prevLen.current && isActive) {
+                        setMuted(false);
+                        const last = pending[0];
                         
-                        // Lógica de Notificación en Segundo Plano
-                        const pendings = loadedRequests.filter(r => r.status === 'pending');
-                        if (pendings.length > prevRequestsLength.current) {
-                            const newOrder = pendings[0];
-                            if (document.hidden && Notification.permission === "granted") {
-                                try {
-                                    new Notification("¡NUEVO PEDIDO!", { 
-                                        body: `Mesa: ${newOrder.tableId}${newOrder.message ? ' - ' + newOrder.message : ''}`,
-                                        icon: "https://i.imgur.com/crEnZHt.png",
-                                        tag: "pedido-bar" // Evita spam, reemplaza la anterior si hay muchas
-                                    });
-                                } catch(e) { console.log("Error notif", e); }
-                            }
+                        console.log('🔔 NUEVO PEDIDO DETECTADO:', last);
+                        
+                        // Notificación persistente
+                        showPersistentNotification(
+                            `🚨 PEDIDO: Mesa ${last.tableId}`,
+                            last.message || 'Solicita atención',
+                            `pedido-${last.id}`
+                        );
+
+                        // MediaSession
+                        if ("mediaSession" in navigator) {
+                            navigator.mediaSession.metadata = new MediaMetadata({
+                                title: `🔔 Mesa ${last.tableId}`,
+                                artist: last.message || 'Nuevo pedido',
+                                album: "Bar Sanchez",
+                                artwork: [{ src: "https://i.imgur.com/crEnZHt.png", sizes: "512x512", type: "image/png" }]
+                            });
+                            if (silent.current) silent.current.play().catch(()=>{});
                         }
-                        prevRequestsLength.current = pendings.length;
-                        setRequests(loadedRequests);
-                    }, 
-                    (err) => { if (err.code === 'permission-denied') setPermissionError(true); }
-                );
-
-                // ESTADO BAR
-                const settingsRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'app_settings', 'global');
-                const unsubSet = onSnapshot(settingsRef, (docSnap) => {
-                    if (docSnap.exists()) setIsStoreOpen(docSnap.data().isOpen);
-                    else setDoc(settingsRef, { isOpen: true }).catch(()=>{});
-                });
-
-                // SESIONES ACTIVAS
-                const sessionsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions');
-                const unsubSess = onSnapshot(sessionsRef, (snapshot) => {
-                    const loadedSessions = [];
-                    snapshot.forEach((doc) => loadedSessions.push({ id: doc.id, ...doc.data() }));
-                    loadedSessions.sort((a, b) => a.id.localeCompare(b.id));
-                    setActiveSessions(loadedSessions);
-                });
-
-                return () => { unsubReq(); unsubSet(); unsubSess(); };
-            }, [user, isDemoMode]);
-
-            // 3. Listener Cliente
-            useEffect(() => {
-                if (!user || isDemoMode || view !== 'customer' || !activeTableName) return;
-                const mySessionRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', activeTableName);
-                const unsubMySession = onSnapshot(mySessionRef, (docSnap) => {
-                    if (!docSnap.exists()) {
-                        setActiveTableName(null);
-                        localStorage.removeItem('bar_app_table_name');
-                        alert("Mesa liberada por administración.");
                     }
+                    
+                    prevLen.current = pending.length;
+                    setRequests(loaded);
+                }, (err) => console.error('Firestore error:', err));
+
+                const sessRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions');
+                const unsubSess = onSnapshot(sessRef, (snap) => {
+                    const s = [];
+                    snap.forEach((d) => s.push({ id: d.id, ...d.data() }));
+                    setSessions(s);
                 });
-                return () => unsubMySession();
-            }, [user, activeTableName, view, isDemoMode]);
 
-            // 4. Control Alarma
+                return () => { unsubReq(); unsubSess(); };
+            }, [user, view, isActive]);
+
+            // Alarma cuando hay pendientes
             useEffect(() => {
-                const pending = requests.filter(r => r.status === 'pending');
-                if (pending.length > 0 && view === 'admin' && isSystemActive) {
-                    startPersistentAlarm(soundEnabled);
+                const pend = requests.filter(r => r.status === 'pending');
+                if (pend.length > 0 && view === 'admin' && isActive) {
+                    startAlarm(sound, muted);
                 } else {
-                    stopPersistentAlarm();
+                    stopAlarm();
                 }
-                return () => stopPersistentAlarm();
-            }, [requests, view, isSystemActive, soundEnabled]);
+                return stopAlarm;
+            }, [requests, view, isActive, sound, muted]);
 
-            useEffect(() => { return () => { if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current); }; }, []);
-
-            // --- ACCIONES ---
-            
-            const activateSystem = async () => {
-                setIsSystemActive(true);
+            const activate = async () => {
+                setIsActive(true);
                 
-                // 1. Audio Context
+                // Audio context
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 ctx.resume();
-                audioCtxRef.current = ctx;
+                audioCtx.current = ctx;
 
-                // 2. Audio Silencioso (Truco para mantener app viva en segundo plano)
-                if (!silentAudioRef.current) {
-                    const silentAudio = new Audio("data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==");
-                    silentAudio.loop = true;
-                    silentAudio.volume = 0.01;
-                    silentAudio.play().catch(e => console.log("Audio bg error", e));
-                    silentAudioRef.current = silentAudio;
-                }
-
-                // 3. Permisos de Notificación
-                if ("Notification" in window) {
-                    const perm = await Notification.requestPermission();
-                    setNotificationPermission(perm);
-                }
-
-                // 4. Wake Lock (Pantalla Encendida)
-                try { 
-                    if ('wakeLock' in navigator) {
-                        const lock = await navigator.wakeLock.request('screen');
-                        setWakeLockActive(true);
-                        // Si se pierde el foco y se suelta, intentar recuperarlo al volver
-                        lock.addEventListener('release', () => setWakeLockActive(false));
+                // Audio silencioso para MediaSession
+                if (!silent.current) {
+                    const s = new Audio("data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==");
+                    s.loop = true;
+                    s.volume = 0.01;
+                    
+                    if ("mediaSession" in navigator) {
+                        navigator.mediaSession.metadata = new MediaMetadata({
+                            title: "Sistema Activo",
+                            artist: "Bar Sanchez",
+                            artwork: [{ src: "https://i.imgur.com/crEnZHt.png", sizes: "512x512", type: "image/png" }]
+                        });
+                        navigator.mediaSession.setActionHandler('pause', () => { setMuted(true); s.pause(); });
+                        navigator.mediaSession.setActionHandler('play', () => { setMuted(false); s.play(); });
                     }
-                } catch (err) { console.log("Wake Lock no soportado", err); }
-            };
+                    s.play().catch(()=>{});
+                    silent.current = s;
+                }
 
-            const toggleStoreStatus = async () => {
-                const newState = !isStoreOpen;
-                if (confirm(newState ? "¿ABRIR el bar?" : "¿CERRAR el bar?")) {
-                    if (isDemoMode) { setIsStoreOpen(newState); return; }
-                    try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'app_settings', 'global'), { isOpen: newState }); } 
-                    catch(e) { alert("Error permisos."); }
+                // Permisos
+                if ("Notification" in window) {
+                    const p = await Notification.requestPermission();
+                    setNotifPerm(p);
+                    console.log('Permiso notificaciones:', p);
                 }
             };
 
-            const closeTableSession = async (tableId) => {
-                if(!confirm(`¿Liberar mesa: ${tableId}?`)) return;
-                try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', tableId)); } catch(e) { console.error(e); }
+            const completeReq = async (id) => {
+                setMuted(false); 
+                if (silent.current) silent.current.play().catch(()=>{});
+                try { 
+                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests', id), { 
+                        status: 'completed' 
+                    }); 
+                } catch(e) {
+                    console.error('Error completando:', e);
+                }
             };
 
-            const closeAllSessions = async () => {
-                if(!confirm("¿Desconectar TODAS las mesas?")) return;
+            const simulate = async () => {
+                console.log('🧪 Simulando pedido...');
+                await showPersistentNotification("🧪 PRUEBA", "Notificación de prueba", "test");
                 try {
-                    const querySnapshot = await getDocs(collection(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions'));
-                    querySnapshot.forEach((docSnap) => { deleteDoc(docSnap.ref); });
-                } catch(e) { console.error(e); }
+                    await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests'), {
+                        tableId: 'Mesa Prueba',
+                        status: 'pending',
+                        timestamp: serverTimestamp(),
+                        message: 'Simulación de prueba'
+                    });
+                } catch(e) {
+                    console.error('Error simulando:', e);
+                }
             };
 
-            const startCooldown = () => {
-                setCooldownSeconds(30);
-                if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current);
-                cooldownIntervalRef.current = setInterval(() => {
-                    setCooldownSeconds(prev => { if (prev <= 1) { clearInterval(cooldownIntervalRef.current); return 0; } return prev - 1; });
-                }, 1000);
+            const closeTable = async (id) => {
+                if(!confirm(`¿Liberar ${id}?`)) return;
+                try { 
+                    await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', id)); 
+                } catch(e) {
+                    console.error('Error cerrando:', e);
+                }
             };
 
-            const handleTableSelection = async (tableName) => {
-                setActiveTableName(tableName);
-                localStorage.setItem('bar_app_table_name', tableName);
-                setShowCustomInput(false);
-                if (!isDemoMode && user) {
+            const getColor = (n) => {
+                if (n.includes('Amarilla')) return 'bg-yellow-400 text-yellow-950';
+                if (n.includes('Verde')) return 'bg-green-500 text-white';
+                if (n.includes('Azul')) return 'bg-blue-600 text-white';
+                if (n.includes('Roja')) return 'bg-red-600 text-white';
+                return 'bg-slate-700 text-white';
+            };
+
+            const selectTable = async (name) => {
+                setActiveTable(name);
+                localStorage.setItem('bar_app_table_name', name);
+                setShowInput(false);
+                if (user) {
                     try {
-                        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', tableName), {
-                            active: true,
-                            id: tableName,
-                            lastLogin: serverTimestamp()
+                        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', name), {
+                            active: true, id: name, lastLogin: serverTimestamp()
                         });
                     } catch(e) {}
                 }
             };
 
-            const handleResetTable = () => {
+            const resetTable = () => {
                 if (confirm('¿Cambiar de mesa?')) {
-                    setActiveTableName(null);
+                    setActiveTable(null);
                     localStorage.removeItem('bar_app_table_name');
-                    setTempCustomName('');
+                    setTempName('');
                 }
             };
 
-            const handleCreateRequest = async (msg = null) => {
-                if (cooldownSeconds > 0 || isSending || !activeTableName) return;
-                setIsSending(true);
-
-                if (isDemoMode) {
-                    setTimeout(() => {
-                        const newReq = { id: Math.random().toString(), tableId: activeTableName, status: 'pending', timestamp: { seconds: Date.now()/1000 }, message: msg };
-                        setRequests(prev => [newReq, ...prev]);
-                        startCooldown();
-                        setCustomOrderText('');
-                        setIsSending(false);
-                    }, 500);
-                    return;
-                }
+            const createReq = async (msg = null) => {
+                if (cooldown > 0 || sending || !activeTable) return;
+                setSending(true);
 
                 try {
                     await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests'), {
-                        tableId: activeTableName,
-                        status: 'pending',
-                        timestamp: serverTimestamp(),
-                        message: msg
+                        tableId: activeTable, status: 'pending', timestamp: serverTimestamp(), message: msg
                     });
                     if (navigator.vibrate) navigator.vibrate(50);
-                    startCooldown();
-                    setCustomOrderText('');
+                    startCd();
+                    setCustomText('');
                 } catch (e) {
-                    if (e.code === 'permission-denied') setPermissionError(true);
-                    else alert("Error enviando pedido.");
+                    alert("Error enviando pedido.");
                 } finally {
-                    setIsSending(false);
+                    setSending(false);
                 }
             };
 
-            const handleCompleteRequest = async (id) => {
-                if (isDemoMode) { setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'completed' } : r)); return; }
-                try { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests', id), { status: 'completed' }); } 
-                catch(e) {}
+            const startCd = () => {
+                setCooldown(30);
+                if (cdRef.current) clearInterval(cdRef.current);
+                cdRef.current = setInterval(() => {
+                    setCooldown(p => { if (p <= 1) { clearInterval(cdRef.current); return 0; } return p - 1; });
+                }, 1000);
             };
 
-            const handleSimulateRequest = async () => {
-                if (isDemoMode) {
-                    const newReq = { id: Math.random().toString(), tableId: 'Mesa Prueba', status: 'pending', timestamp: { seconds: Date.now()/1000 }, message: 'Simulacro Demo' };
-                    setRequests(prev => [newReq, ...prev]);
-                    return;
-                }
-                try {
-                    await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'service_requests'), {
-                        tableId: 'Mesa Prueba', status: 'pending', timestamp: serverTimestamp(), message: 'Simulacro Admin'
-                    });
-                } catch(e) {}
-            };
+            if (loading) return <div className="h-screen flex items-center justify-center text-white">Cargando...</div>;
 
-            const getTableColorClass = (name) => {
-                if (name.includes('Amarilla')) return 'bg-yellow-400 text-yellow-950 border-yellow-500';
-                if (name.includes('Verde')) return 'bg-green-500 text-white border-green-600';
-                if (name.includes('Azul')) return 'bg-blue-600 text-white border-blue-700';
-                if (name.includes('Roja')) return 'bg-red-600 text-white border-red-700';
-                return 'bg-slate-700 text-white border-slate-800';
-            };
-
-            // --- RENDERIZADO ---
-
-            if (permissionError && !isDemoMode) {
-                return (
-                    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white text-center font-sans">
-                        <Lock className="w-20 h-20 text-red-500 mb-6" />
-                        <h1 className="text-3xl font-bold mb-2">Acceso Restringido</h1>
-                        <p className="text-slate-300 mb-6 max-w-md">Activa las reglas en Firebase Console.</p>
-                        <button onClick={() => setIsDemoMode(true)} className="bg-green-700 py-3 px-6 rounded-lg font-bold flex items-center justify-center gap-2"><WifiOff size={18}/> Usar Modo Demo</button>
-                    </div>
-                );
-            }
-
-            if (loading) return <div className="h-screen flex items-center justify-center bg-gray-100">Cargando...</div>;
-
-            if (!isStoreOpen && view !== 'admin') {
-                return (
-                    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-white text-center font-sans fade-in">
-                        <BarLogo size="h-32" className="mb-8" />
-                        <h1 className="text-4xl font-black mb-4">¡Gracias por tu visita!</h1>
-                        <p className="text-xl text-slate-300 mb-8">Nuestro turno ha finalizado.</p>
-                    </div>
-                );
-            }
-
-            // ADMIN PANEL
-            if (view === 'admin') {
-                const pendingRequests = requests.filter(r => r.status === 'pending');
-                if (!isSystemActive) {
+            // VISTA CLIENTE
+            if (view === 'customer') {
+                if (!activeTable) {
                     return (
-                        <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-white text-center font-sans">
-                            <BarLogo size="h-24" className="mb-6" />
-                            <h2 className="text-2xl font-bold mb-4">Activar Alertas</h2>
-                            <p className="text-slate-400 mb-8 max-w-xs">Toca para activar el sonido, notificaciones y evitar que el celular se bloquee.</p>
-                            <button onClick={activateSystem} className="w-full max-w-sm bg-blue-600 text-white font-bold py-4 px-8 rounded-full shadow-lg animate-bounce">INICIAR TURNO</button>
-                            
-                            <div className="mt-6 text-xs text-slate-500 border-t border-slate-800 pt-4 w-full text-center">
-                                <p>Notificaciones: <span className={notificationPermission==='granted'?'text-green-400':'text-red-400'}>{notificationPermission === 'granted' ? 'ACTIVAS' : 'INACTIVAS'}</span></p>
+                        <div className="min-h-screen bg-gray-100 p-6 flex flex-col font-sans">
+                            <div className="text-center mb-8 mt-4">
+                                <BarLogo className="mb-4" />
+                                <h2 className="text-2xl font-bold text-gray-800">¿Dónde estás ubicado?</h2>
+                            </div>
+                            {!showInput ? (
+                                <div className="grid grid-cols-2 gap-4 max-w-md mx-auto w-full">
+                                    {['Amarilla', 'Verde', 'Azul', 'Roja'].map((color) => (
+                                        <button 
+                                            key={color} 
+                                            onClick={() => selectTable(`Mesa ${color}`)}
+                                            className={`aspect-square rounded-2xl shadow-md flex flex-col items-center justify-center border-b-4 active:scale-95 transition-transform ${getColor(`Mesa ${color}`)}`}
+                                        >
+                                            <div className="bg-white/20 p-3 rounded-full mb-2">
+                                                <MapPin />
+                                            </div>
+                                            <span className="font-bold text-lg">{color}</span>
+                                        </button>
+                                    ))}
+                                    <button 
+                                        onClick={() => setShowInput(true)}
+                                        className="col-span-2 bg-white rounded-xl shadow-sm p-4 flex items-center justify-center gap-3 text-gray-600 border border-gray-200"
+                                    >
+                                        <Edit2 size={20} /> <span className="font-medium">Otro</span>
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="max-w-md mx-auto w-full bg-white p-6 rounded-2xl shadow-lg">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Nombre de mesa..." 
+                                        className="w-full p-4 border border-gray-300 rounded-xl mb-4 text-lg outline-blue-500" 
+                                        value={tempName} 
+                                        onChange={(e) => setTempName(e.target.value)} 
+                                        autoFocus 
+                                    />
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => setShowInput(false)}
+                                            className="flex-1 py-3 text-gray-500 font-bold"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button 
+                                            onClick={() => { if(tempName.trim()) selectTable(tempName.trim()); }}
+                                            disabled={!tempName.trim()}
+                                            className="flex-1 bg-blue-600 text-white rounded-xl py-3 font-bold shadow-lg disabled:opacity-50"
+                                        >
+                                            Confirmar
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                }
+
+                const isWaiting = cooldown > 0;
+                return (
+                    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+                        <header className="bg-white p-3 shadow-sm flex justify-between items-center sticky top-0 z-10">
+                            <div className="flex items-center gap-3">
+                                <BarLogo size="h-10" />
+                                <div>
+                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Ubicación</p>
+                                    <div className={`text-sm px-2 py-0.5 rounded font-bold inline-block ${getColor(activeTable)}`}>
+                                        {activeTable}
+                                    </div>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={resetTable}
+                                className="text-gray-400 hover:text-red-500 text-xs flex flex-col items-center"
+                            >
+                                <Edit2 size={18}/><span>Cambiar</span>
+                            </button>
+                        </header>
+                        <main className="flex-1 p-6 flex flex-col items-center justify-start text-center space-y-8 overflow-y-auto">
+                            <div className="flex flex-col items-center w-full max-w-xs mt-4">
+                                <button 
+                                    onClick={() => createReq(null)}
+                                    disabled={isWaiting || sending}
+                                    className={`w-64 h-64 rounded-full shadow-xl flex flex-col items-center justify-center text-white transition-all transform active:scale-95 duration-200 ${
+                                        isWaiting 
+                                            ? 'bg-green-500 cursor-not-allowed shadow-none ring-4 ring-green-200' 
+                                            : sending 
+                                                ? 'bg-gray-400 cursor-wait' 
+                                                : 'bg-red-600 hover:bg-red-700 shadow-red-500/40 ring-4 ring-red-100'
+                                    }`}
+                                >
+                                    {isWaiting ? (
+                                        <>
+                                            <CheckCircle size={64} className="mb-4 animate-bounce" />
+                                            <span className="text-xl font-bold px-4">¡Avisado!</span>
+                                            <div className="flex items-center gap-1 mt-4 text-green-100 font-mono bg-green-600/30 px-3 py-1 rounded-full">
+                                                <Clock size={16} /><span>{cooldown}s</span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Bell size={64} className="mb-4 animate-pulse" />
+                                            <span className="text-2xl font-bold uppercase tracking-wider">Llamar<br/>Mesero</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                            <div className="w-full max-w-xs space-y-4 pb-8">
+                                <button 
+                                    onClick={() => createReq("Otra ronda, por favor")}
+                                    disabled={isWaiting || sending}
+                                    className={`w-full py-4 px-6 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors border-b-4 ${
+                                        isWaiting || sending 
+                                            ? 'bg-gray-200 text-gray-400 border-gray-300' 
+                                            : 'bg-amber-400 text-amber-950 border-amber-600 hover:bg-amber-500 active:bg-amber-600 shadow-lg'
+                                    }`}
+                                >
+                                    <Beer size={24} /> <span>¡Súbeme una ronda!</span>
+                                </button>
+                                <div className={`bg-white p-1 rounded-xl shadow-sm border transition-colors relative ${
+                                    isWaiting || sending ? 'border-gray-200 bg-gray-50' : 'border-gray-300 focus-within:border-blue-500'
+                                }`}>
+                                    <textarea 
+                                        value={customText} 
+                                        onChange={(e) => setCustomText(e.target.value)}
+                                        disabled={isWaiting || sending}
+                                        placeholder="Escribe un pedido especial aquí..." 
+                                        className="w-full resize-none outline-none text-gray-700 placeholder-gray-400 bg-transparent disabled:cursor-not-allowed p-3 text-sm" 
+                                        rows={2} 
+                                    />
+                                    <div className="flex justify-end p-2">
+                                        <button 
+                                            onClick={() => createReq(customText)}
+                                            disabled={isWaiting || sending || !customText.trim()}
+                                            className={`p-2 rounded-lg transition-colors flex items-center gap-2 text-sm font-bold ${
+                                                isWaiting || sending || !customText.trim() 
+                                                    ? 'text-gray-300 bg-gray-100 cursor-not-allowed' 
+                                                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md px-4'
+                                            }`}
+                                        >
+                                            Enviar <Send size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </main>
+                    </div>
+                );
+            }
+
+            if (loading) return <div className="h-screen flex items-center justify-center text-white">Cargando...</div>;
+
+            if (view === 'admin') {
+                const pending = requests.filter(r => r.status === 'pending');
+                
+                if (!isActive) {
+                    return (
+                        <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-white text-center">
+                            <BarLogo size="h-24" />
+                            <h2 className="text-2xl font-bold my-4">Activar Sistema de Notificaciones</h2>
+                            <p className="text-slate-400 mb-8 max-w-md">
+                                Presiona para activar alertas de sonido, notificaciones push y controles desde pantalla de bloqueo.
+                            </p>
+                            <button 
+                                onClick={activate} 
+                                className="w-full max-w-sm bg-blue-600 font-bold py-4 px-8 rounded-full shadow-lg hover:bg-blue-700 active:scale-95 transition-transform"
+                            >
+                                🚀 INICIAR TURNO
+                            </button>
+                            <div className="mt-8 text-sm text-slate-500 space-y-2">
+                                <p>🔔 Notificaciones: <span className={notifPerm === 'granted' ? 'text-green-400' : 'text-red-400'}>{notifPerm === 'granted' ? 'ACTIVAS ✅' : 'PENDIENTES ⚠️'}</span></p>
+                                <p>⚙️ Service Worker: <span className={swReady ? 'text-green-400' : 'text-yellow-400'}>{swReady ? 'REGISTRADO ✅' : 'CARGANDO...'}</span></p>
                             </div>
                         </div>
                     );
                 }
+
                 return (
-                    <div className={`min-h-screen transition-colors duration-300 ${pendingRequests.length > 0 ? 'bg-red-50 urgent-bg' : 'bg-white'} font-sans flex flex-col`}>
-                        <header className={`${pendingRequests.length > 0 ? 'bg-red-600' : 'bg-slate-900'} text-white p-4 shadow-md transition-colors duration-300`}>
-                            <div className="flex justify-between items-center mb-2">
-                                <div className="flex items-center gap-2"><BarLogo size="h-8" className={pendingRequests.length>0?"animate-bounce":""} /> <span className="font-bold">Admin</span></div>
-                                <button onClick={() => setSoundEnabled(!soundEnabled)} className="bg-black/30 p-2 rounded-full hover:bg-black/50 transition-colors">
-                                    {soundEnabled ? <Volume2 size={20} /> : <Vibrate size={20} />}
-                                </button>
+                    <div className={`min-h-screen ${pending.length > 0 ? 'urgent-bg' : 'bg-white'} font-sans flex flex-col transition-colors duration-300`}>
+                        <header className={`${pending.length > 0 ? 'bg-red-600' : 'bg-slate-900'} text-white p-4 shadow-lg transition-colors duration-300`}>
+                            <div className="flex justify-between items-center mb-3">
+                                <div className="flex items-center gap-2">
+                                    <BarLogo size="h-10" />
+                                    <span className="font-bold text-lg">Panel Admin</span>
+                                </div>
+                                <div className="flex gap-2">
+                                    {muted && (
+                                        <span className="bg-yellow-500/20 text-yellow-300 text-xs px-2 py-1 rounded flex items-center gap-1">
+                                            <PauseCircle size={12}/> Pausado
+                                        </span>
+                                    )}
+                                    <button 
+                                        onClick={() => setSound(!sound)} 
+                                        className="bg-black/30 p-2 rounded-full hover:bg-black/50"
+                                    >
+                                        {sound ? <Volume2 size={20} /> : <Vibrate size={20} />}
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                                <button onClick={toggleStoreStatus} className={`text-xs font-bold px-3 py-2 rounded-lg border flex items-center gap-2 whitespace-nowrap ${isStoreOpen ? 'bg-red-900 border-red-700' : 'bg-green-700 border-green-600'}`}>
-                                    <Power size={14} /> {isStoreOpen ? 'CERRAR TURNO' : 'ABRIR BAR'}
+                            
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                                <div className="bg-black/30 text-xs px-3 py-2 rounded-lg flex items-center gap-2 whitespace-nowrap">
+                                    <Bell size={14} /> {pending.length} Pedidos
+                                </div>
+                                <button 
+                                    onClick={simulate}
+                                    className="bg-purple-600 text-xs px-3 py-2 rounded-lg font-bold hover:bg-purple-700 whitespace-nowrap"
+                                >
+                                    🧪 Probar
                                 </button>
-                                <div className="bg-black/30 text-xs px-3 py-2 rounded-lg flex items-center gap-2 border border-white/20">
-                                    <Bell size={14} /> {pendingRequests.length} Pedidos
-                                </div>
-                                <div className={`text-xs px-3 py-2 rounded-lg flex items-center gap-2 border border-white/20 ${wakeLockActive ? 'bg-yellow-600/50' : 'bg-gray-700/50'}`}>
-                                    <Sun size={14} /> {wakeLockActive ? 'Pantalla ON' : 'Normal'}
-                                </div>
                             </div>
                         </header>
 
                         <main className="flex-1 p-4 overflow-y-auto">
-                            {/* MONITOR DE MESAS */}
-                            <div className="mb-8">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-gray-500 text-sm uppercase flex items-center gap-2">
-                                        <Smartphone size={16}/> Mesas Conectadas ({activeSessions.length})
-                                    </h3>
-                                    {activeSessions.length > 0 && <button onClick={closeAllSessions} className="text-xs text-red-500 hover:text-red-700 font-bold underline">Liberar Todas</button>}
-                                </div>
-                                {activeSessions.length === 0 ? (
-                                    <div className="text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-400 text-sm">No hay clientes conectados</div>
+                            {/* Mesas conectadas */}
+                            <div className="mb-6">
+                                <h3 className="font-bold text-gray-600 text-sm uppercase mb-3 flex items-center gap-2">
+                                    <Smartphone size={16}/> Mesas Activas ({sessions.length})
+                                </h3>
+                                {sessions.length === 0 ? (
+                                    <div className="text-center py-4 bg-gray-50 rounded-lg text-gray-400 text-sm">
+                                        Sin mesas conectadas
+                                    </div>
                                 ) : (
                                     <div className="grid grid-cols-2 gap-3">
-                                        {activeSessions.map(session => (
-                                            <div key={session.id} className="bg-white border border-gray-200 p-3 rounded-lg shadow-sm flex justify-between items-center">
-                                                <div className="flex items-center gap-2">
-                                                    <div className={`w-3 h-3 rounded-full ${session.id.includes('Amarilla') ? 'bg-yellow-400' : session.id.includes('Verde') ? 'bg-green-500' : session.id.includes('Azul') ? 'bg-blue-600' : session.id.includes('Roja') ? 'bg-red-600' : 'bg-slate-400'}`}></div>
-                                                    <span className="font-bold text-sm text-gray-700 truncate max-w-[80px]">{session.id}</span>
-                                                </div>
-                                                <button onClick={() => closeTableSession(session.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={16} /></button>
+                                        {sessions.map(s => (
+                                            <div key={s.id} className="bg-white border p-3 rounded-lg flex justify-between items-center">
+                                                <span className={`text-sm font-bold px-2 py-1 rounded ${getColor(s.id)}`}>
+                                                    {s.id}
+                                                </span>
+                                                <button 
+                                                    onClick={() => closeTable(s.id)}
+                                                    className="text-gray-400 hover:text-red-500"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
                                             </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
 
-                            <hr className="my-6 border-gray-200" />
-                            <h3 className="font-bold text-gray-500 text-sm uppercase mb-3 flex items-center gap-2"><Bell size={16}/> Cola de Pedidos</h3>
+                            <hr className="my-6" />
 
-                            {pendingRequests.length === 0 ? (
-                                <div className="text-center py-10 opacity-50">
+                            {/* Pedidos pendientes */}
+                            <h3 className="font-bold text-gray-600 text-sm uppercase mb-3 flex items-center gap-2">
+                                <Bell size={16}/> Cola de Pedidos
+                            </h3>
+
+                            {pending.length === 0 ? (
+                                <div className="text-center py-10">
                                     <CheckCircle size={60} className="mx-auto text-gray-300 mb-2" />
                                     <p className="text-gray-400 font-bold">Sin pedidos pendientes</p>
-                                    <button onClick={handleSimulateRequest} className="mt-4 text-xs bg-gray-200 px-3 py-1 rounded text-gray-500">Probar Notificación</button>
                                 </div>
                             ) : (
                                 <div className="space-y-4">
-                                    {pendingRequests.map((req) => (
-                                        <div key={req.id} className="bg-white rounded-xl shadow-xl border-2 border-red-500 overflow-hidden animate-in slide-in-from-bottom-2">
+                                    {pending.map((req) => (
+                                        <div 
+                                            key={req.id} 
+                                            className="bg-white rounded-xl shadow-xl border-2 border-red-500 overflow-hidden"
+                                        >
                                             <div className="p-6">
                                                 <div className="flex justify-between items-start mb-4">
-                                                    <span className={`inline-block px-3 py-1 rounded-full font-bold text-sm shadow-sm ${getTableColorClass(req.tableId)}`}>{req.tableId}</span>
-                                                    <span className="text-gray-400 text-xs font-mono">{req.timestamp?.seconds ? new Date(req.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '...'}</span>
+                                                    <span className={`px-3 py-1 rounded-full font-bold text-sm ${getColor(req.tableId)}`}>
+                                                        {req.tableId}
+                                                    </span>
+                                                    <span className="text-gray-400 text-xs">
+                                                        {req.timestamp?.seconds 
+                                                            ? new Date(req.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
+                                                            : '...'}
+                                                    </span>
                                                 </div>
-                                                {req.message && <div className="bg-amber-50 p-4 rounded-lg mb-4 border-l-4 border-amber-500"><p className="text-amber-900 font-medium text-lg">"{req.message}"</p></div>}
-                                                <button onClick={() => handleCompleteRequest(req.id)} className="w-full bg-slate-900 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 hover:bg-slate-800 active:bg-slate-950 transition-colors shadow-lg"><VolumeX size={20} /> ATENDIDO</button>
+                                                
+                                                {req.message && (
+                                                    <div className="bg-amber-50 p-4 rounded-lg mb-4 border-l-4 border-amber-500">
+                                                        <p className="text-amber-900 font-medium text-lg">
+                                                            "{req.message}"
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                
+                                                <button 
+                                                    onClick={() => completeReq(req.id)}
+                                                    className="w-full bg-slate-900 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 hover:bg-slate-800 active:bg-slate-950 shadow-lg"
+                                                >
+                                                    <VolumeX size={20} /> ATENDIDO
+                                                </button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
                         </main>
-                    </div>
-                );
-            }
-
-            // Cliente (Igual)
-            if (view === 'customer') {
-                if (!activeTableName) {
-                    return (
-                        <div className="min-h-screen bg-gray-100 p-6 flex flex-col font-sans">
-                            <div className="text-center mb-8 mt-4"><BarLogo className="mb-4" /><h2 className="text-2xl font-bold text-gray-800">¿Dónde estás ubicado?</h2></div>
-                            {!showCustomInput ? (
-                                <div className="grid grid-cols-2 gap-4 max-w-md mx-auto w-full">
-                                    {['Amarilla', 'Verde', 'Azul', 'Roja'].map((color) => (
-                                        <button key={color} onClick={() => handleTableSelection(`Mesa ${color}`)} className={`aspect-square rounded-2xl shadow-md flex flex-col items-center justify-center border-b-4 active:scale-95 transition-transform ${getTableColorClass(`Mesa ${color}`)}`}><div className="bg-white/20 p-3 rounded-full mb-2"><MapPin /></div><span className="font-bold text-lg">{color}</span></button>
-                                    ))}
-                                    <button onClick={() => setShowCustomInput(true)} className="col-span-2 bg-white rounded-xl shadow-sm p-4 flex items-center justify-center gap-3 text-gray-600 border border-gray-200"><Edit2 size={20} /> <span className="font-medium">Otro</span></button>
-                                </div>
-                            ) : (
-                                <div className="max-w-md mx-auto w-full bg-white p-6 rounded-2xl shadow-lg">
-                                    <input type="text" placeholder="Nombre de mesa..." className="w-full p-4 border border-gray-300 rounded-xl mb-4 text-lg outline-blue-500" value={tempCustomName} onChange={(e) => setTempCustomName(e.target.value)} autoFocus />
-                                    <div className="flex gap-2"><button onClick={() => setShowCustomInput(false)} className="flex-1 py-3 text-gray-500 font-bold">Cancelar</button><button onClick={() => { if(tempCustomName.trim()) handleTableSelection(tempCustomName.trim()); }} disabled={!tempCustomName.trim()} className="flex-1 bg-blue-600 text-white rounded-xl py-3 font-bold shadow-lg disabled:opacity-50">Confirmar</button></div>
-                                </div>
-                            )}
-                        </div>
-                    );
-                }
-                const isWaiting = cooldownSeconds > 0;
-                return (
-                    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-                        <header className="bg-white p-3 shadow-sm flex justify-between items-center sticky top-0 z-10">
-                            <div className="flex items-center gap-3"><BarLogo className="h-10" /><div><p className="text-[10px] text-gray-400 uppercase font-bold">Ubicación</p><div className={`text-sm px-2 py-0.5 rounded font-bold inline-block ${getTableColorClass(activeTableName)}`}>{activeTableName}</div></div></div>
-                            <button onClick={handleResetTable} className="text-gray-400 hover:text-red-500 text-xs flex flex-col items-center"><Edit2 size={18}/><span>Cambiar</span></button>
-                        </header>
-                        <main className="flex-1 p-6 flex flex-col items-center justify-start text-center space-y-8 overflow-y-auto">
-                            <div className="flex flex-col items-center w-full max-w-xs mt-4">
-                                <button onClick={() => handleCreateRequest(null)} disabled={isWaiting || isSending} className={`w-64 h-64 rounded-full shadow-xl flex flex-col items-center justify-center text-white transition-all transform active:scale-95 duration-200 ${isWaiting ? 'bg-green-500 cursor-not-allowed shadow-none ring-4 ring-green-200' : isSending ? 'bg-gray-400 cursor-wait' : 'bg-red-600 hover:bg-red-700 shadow-red-500/40 ring-4 ring-red-100'}`}>
-                                    {isWaiting ? <><CheckCircle size={64} className="mb-4 animate-bounce" /><span className="text-xl font-bold px-4">¡Avisado!</span><div className="flex items-center gap-1 mt-4 text-green-100 font-mono bg-green-600/30 px-3 py-1 rounded-full"><Clock size={16} /><span>{cooldownSeconds}s</span></div></> : <><Bell size={64} className="mb-4 animate-pulse" /><span className="text-2xl font-bold uppercase tracking-wider">Llamar<br/>Mesero</span></>}
-                                </button>
-                            </div>
-                            <div className="w-full max-w-xs space-y-4 pb-8">
-                                <button onClick={() => handleCreateRequest("Otra ronda, por favor")} disabled={isWaiting || isSending} className={`w-full py-4 px-6 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors border-b-4 ${isWaiting || isSending ? 'bg-gray-200 text-gray-400 border-gray-300' : 'bg-amber-400 text-amber-950 border-amber-600 hover:bg-amber-500 active:bg-amber-600 active:border-t-4 active:border-b-0 shadow-lg'}`}><Beer size={24} /> <span>¡Súbeme una ronda!</span></button>
-                                <div className={`bg-white p-1 rounded-xl shadow-sm border transition-colors relative ${isWaiting || isSending ? 'border-gray-200 bg-gray-50' : 'border-gray-300 focus-within:border-blue-500'}`}><textarea value={customOrderText} onChange={(e) => setCustomOrderText(e.target.value)} disabled={isWaiting || isSending} placeholder="Escribe un pedido especial aquí..." className="w-full resize-none outline-none text-gray-700 placeholder-gray-400 bg-transparent disabled:cursor-not-allowed p-3 text-sm" rows={2} /><div className="flex justify-end p-2"><button onClick={() => handleCreateRequest(customOrderText)} disabled={isWaiting || isSending || !customOrderText.trim()} className={`p-2 rounded-lg transition-colors flex items-center gap-2 text-sm font-bold ${isWaiting || isSending || !customOrderText.trim() ? 'text-gray-300 bg-gray-100 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md px-4'}`}>Enviar <Send size={14} /></button></div></div>
-                            </div>
-                        </main>
-                    </div>
-                );
-            }
-
-            // Landing (Solo visible si el admin vuelve atrás manualmente)
-            if (view === 'landing') {
-                return (
-                    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white font-sans">
-                        <div className="mb-8 text-center"><BarLogo className="mb-4" /><h1 className="text-3xl font-bold mb-2">Bar Sanchez</h1><p className="text-slate-400">Sistema de Atención {isDemoMode ? '(Demo Offline)' : ''}</p></div>
-                        <div className="w-full max-w-md space-y-4"><button onClick={() => setView('customer')} className="w-full bg-white text-slate-900 p-4 rounded-xl font-bold text-lg flex items-center justify-between hover:bg-gray-50 transition-colors shadow-lg"><span>Soy Cliente</span> <QrCode className="text-blue-600" /></button><button onClick={() => setView('admin')} className="w-full bg-slate-800 border border-slate-700 text-white p-4 rounded-xl font-bold text-lg flex items-center justify-between hover:bg-slate-700 transition-colors"><span>Soy Administrador</span> <Beer className="text-amber-400"/></button></div>
                     </div>
                 );
             }
