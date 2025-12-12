@@ -67,22 +67,23 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // --- SERVICE WORKER MEJORADO (Para notificaciones robustas en Android) ---
+        // --- SERVICE WORKER INTEGRADO (Para notificaciones robustas en Android) ---
         const swCode = `
             self.addEventListener('install', (event) => self.skipWaiting());
             self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
             
-            // Este evento permite recibir push del servidor si se configura a futuro, 
-            // pero también ayuda a registrar el SW correctamente para notificaciones locales.
-            self.addEventListener('push', (event) => {
-                const data = event.data ? event.data.json() : {};
-                self.registration.showNotification(data.title || 'Bar Sanchez', {
-                    body: data.body || 'Atención requerida',
-                    icon: 'https://i.imgur.com/crEnZHt.png',
-                    vibrate: [200, 100, 200, 100, 200],
-                    requireInteraction: true, // Mantiene la notificación hasta que se toca
-                    tag: 'bar-alert'
-                });
+            // Evento para mostrar notificaciones cuando la app está en segundo plano
+            self.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+                    self.registration.showNotification(event.data.title, {
+                        body: event.data.body,
+                        icon: 'https://i.imgur.com/crEnZHt.png',
+                        vibrate: [200, 100, 200, 100, 200],
+                        requireInteraction: true,
+                        tag: 'bar-alert',
+                        renotify: true
+                    });
+                }
             });
         `;
         const swBlob = new Blob([swCode], { type: 'application/javascript' });
@@ -94,24 +95,19 @@
                 .catch(err => console.log('Error SW', err));
         }
 
-        // Función Helper para enviar notificaciones usando el SW (Más confiable en Android)
+        // Función Helper para enviar notificaciones usando el SW
         const sendNotification = async (title, body) => {
             if (Notification.permission !== "granted") return;
 
-            const options = {
-                body: body,
-                icon: "https://i.imgur.com/crEnZHt.png",
-                vibrate: [200, 100, 200],
-                tag: "pedido-bar", // Reemplaza notificaciones viejas para no llenar la barra
-                renotify: true, // Vuelve a sonar/vibrar aunque tenga el mismo tag
-                requireInteraction: true // Pide al usuario que la deslice para quitarla
-            };
-
+            // Intento 1: Usar Service Worker (Banner Nativo Android más confiable)
             try {
-                // Intento 1: Usar Service Worker (Banner Nativo Android)
                 const reg = await navigator.serviceWorker.ready;
-                if (reg) {
-                    await reg.showNotification(title, options);
+                if (reg && reg.active) {
+                    reg.active.postMessage({
+                        type: 'SHOW_NOTIFICATION',
+                        title: title,
+                        body: body
+                    });
                     return;
                 }
             } catch (e) {
@@ -120,7 +116,13 @@
 
             // Intento 2: Fallback API estándar
             try {
-                new Notification(title, options);
+                new Notification(title, {
+                    body: body,
+                    icon: "https://i.imgur.com/crEnZHt.png",
+                    vibrate: [200, 100, 200],
+                    tag: "pedido-bar",
+                    renotify: true
+                });
             } catch (e) {
                 console.log("Error Native Notif:", e);
             }
@@ -265,10 +267,24 @@
             if (oscillatorRef.current) { try { oscillatorRef.current.stop(); oscillatorRef.current.disconnect(); } catch(e){} oscillatorRef.current = null; }
         };
 
-        // --- APP ---
+        // --- APP PRINCIPAL ---
         function App() {
             const [user, setUser] = useState(null);
-            const [view, setView] = useState('landing');
+            
+            // --- ENRUTAMIENTO INICIAL ---
+            const [view, setView] = useState(() => {
+                const params = new URLSearchParams(window.location.search);
+                const modeParam = params.get('mode');
+                // Si hay sesión guardada de admin, entrar como admin
+                const savedAdminSession = localStorage.getItem('bar_admin_session');
+                if (modeParam === 'admin' || savedAdminSession === 'true') {
+                    if (modeParam === 'admin') localStorage.setItem('bar_admin_session', 'true');
+                    return 'admin';
+                }
+                // Si no, SIEMPRE cliente por defecto
+                return 'customer';
+            });
+
             const [activeTableName, setActiveTableName] = useState(null);
             
             // ESTADOS
@@ -278,9 +294,7 @@
             const [isSystemActive, setIsSystemActive] = useState(false);
             const [loading, setLoading] = useState(true);
             
-            // ESTADO DE SESIÓN CERRADA
             const [sessionEnded, setSessionEnded] = useState(false);
-
             const [permissionError, setPermissionError] = useState(false); 
             const [isDemoMode, setIsDemoMode] = useState(false); 
             const [soundEnabled, setSoundEnabled] = useState(true); 
@@ -297,25 +311,20 @@
             const cooldownIntervalRef = useRef(null);
             const prevRequestsLength = useRef(0);
 
-            // 1. INICIALIZACIÓN Y PERSISTENCIA
+            // 1. INICIALIZACIÓN
             useEffect(() => {
                 const init = async () => {
                     const params = new URLSearchParams(window.location.search);
-                    const modeParam = params.get('mode');
                     const tableParam = params.get('table');
-                    
-                    const savedAdminSession = localStorage.getItem('bar_admin_session');
 
-                    if (modeParam === 'admin' || savedAdminSession === 'true') {
-                        setView('admin');
-                        if (modeParam === 'admin') localStorage.setItem('bar_admin_session', 'true');
-                    } else if (tableParam) {
-                        setView('customer');
-                        handleTableSelection(tableParam); 
-                    } else {
-                        setView('customer');
-                        const savedTable = localStorage.getItem('bar_app_table_name');
-                        if (savedTable) setActiveTableName(savedTable);
+                    // Si estamos en modo cliente y hay mesa en URL o LocalStorage, cargarla
+                    if (view === 'customer') {
+                        if (tableParam) {
+                            handleTableSelection(tableParam);
+                        } else {
+                            const savedTable = localStorage.getItem('bar_app_table_name');
+                            if (savedTable) setActiveTableName(savedTable);
+                        }
                     }
                     try { await signInAnonymously(auth); } catch (e) { console.error("Error Auth:", e); }
                     if ("Notification" in window) setNotificationPermission(Notification.permission);
@@ -338,25 +347,19 @@
                         
                         const pendings = loadedRequests.filter(r => r.status === 'pending');
                         if (pendings.length > prevRequestsLength.current) {
-                            // NUEVA ORDEN DETECTADA
-                            setMediaMuted(false); // Reactivar alarma si estaba muteada
-                            const newOrder = pendings[0];
-                            const notifTitle = "¡NUEVO PEDIDO!";
-                            const notifBody = `Mesa: ${newOrder.tableId}${newOrder.message ? ' - ' + newOrder.message : ''}`;
-
-                            // Actualizar Reproductor Multimedia (Pantalla Bloqueo)
+                            setMediaMuted(false); 
+                            
                             if (isSystemActive && "mediaSession" in navigator) {
                                 navigator.mediaSession.metadata = new MediaMetadata({
-                                    title: "🚨 " + notifTitle + " 🚨",
-                                    artist: notifBody,
+                                    title: "🚨 NUEVO PEDIDO 🚨",
+                                    artist: `Mesa: ${pendings[0].tableId}`,
                                     album: "Bar Sanchez",
                                     artwork: [{ src: "https://i.imgur.com/crEnZHt.png", sizes: "512x512", type: "image/png" }]
                                 });
                                 if (silentAudioRef.current) silentAudioRef.current.play().catch(()=>{});
                             }
 
-                            // Enviar Notificación Visual (Service Worker o Nativa)
-                            sendNotification(notifTitle, notifBody);
+                            sendNotification("¡NUEVO PEDIDO!", `Mesa: ${pendings[0].tableId}${pendings[0].message ? ' - ' + pendings[0].message : ''}`);
                         }
                         
                         prevRequestsLength.current = pendings.length;
@@ -457,15 +460,19 @@
 
             const toggleStoreStatus = async () => {
                 const newState = !isStoreOpen;
-                if (confirm(newState ? "¿ABRIR el bar?" : "¿CERRAR el bar? Finalizará el turno actual.")) {
+                // MENSAJE CLARO DE ADVERTENCIA
+                if (confirm(newState ? "¿ABRIR el bar?" : "¿CERRAR el bar? Esto finalizará el turno actual.")) {
                     if (isDemoMode) { setIsStoreOpen(newState); return; }
-                    try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'app_settings', 'global'), { isOpen: newState }); } 
+                    try { 
+                        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'app_settings', 'global'), { isOpen: newState }); 
+                        // MANTENEMOS LA SESIÓN DEL ADMIN ACTIVA AUNQUE CIERRE TURNO
+                    } 
                     catch(e) { alert("Error permisos."); }
                 }
             };
 
             const closeTableSession = async (tableId) => {
-                if(!confirm(`¿Liberar mesa: ${tableId}? El cliente verá el mensaje de despedida.`)) return;
+                if(!confirm(`¿Liberar mesa: ${tableId}?`)) return;
                 try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', tableId)); } catch(e) { console.error(e); }
             };
 
@@ -745,6 +752,7 @@
                 );
             }
 
+            // Landing (Solo se muestra brevemente o si el usuario admin sale)
             if (view === 'landing') {
                 return (
                     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white font-sans">
