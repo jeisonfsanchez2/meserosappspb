@@ -67,16 +67,21 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // --- SERVICE WORKER INTEGRADO ---
+        // --- SERVICE WORKER MEJORADO (Para notificaciones robustas en Android) ---
         const swCode = `
             self.addEventListener('install', (event) => self.skipWaiting());
             self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+            
+            // Este evento permite recibir push del servidor si se configura a futuro, 
+            // pero también ayuda a registrar el SW correctamente para notificaciones locales.
             self.addEventListener('push', (event) => {
                 const data = event.data ? event.data.json() : {};
                 self.registration.showNotification(data.title || 'Bar Sanchez', {
-                    body: data.body || 'Nueva actualización',
+                    body: data.body || 'Atención requerida',
                     icon: 'https://i.imgur.com/crEnZHt.png',
-                    vibrate: [200, 100, 200]
+                    vibrate: [200, 100, 200, 100, 200],
+                    requireInteraction: true, // Mantiene la notificación hasta que se toca
+                    tag: 'bar-alert'
                 });
             });
         `;
@@ -88,6 +93,38 @@
                 .then(reg => console.log('Service Worker registrado', reg))
                 .catch(err => console.log('Error SW', err));
         }
+
+        // Función Helper para enviar notificaciones usando el SW (Más confiable en Android)
+        const sendNotification = async (title, body) => {
+            if (Notification.permission !== "granted") return;
+
+            const options = {
+                body: body,
+                icon: "https://i.imgur.com/crEnZHt.png",
+                vibrate: [200, 100, 200],
+                tag: "pedido-bar", // Reemplaza notificaciones viejas para no llenar la barra
+                renotify: true, // Vuelve a sonar/vibrar aunque tenga el mismo tag
+                requireInteraction: true // Pide al usuario que la deslice para quitarla
+            };
+
+            try {
+                // Intento 1: Usar Service Worker (Banner Nativo Android)
+                const reg = await navigator.serviceWorker.ready;
+                if (reg) {
+                    await reg.showNotification(title, options);
+                    return;
+                }
+            } catch (e) {
+                console.log("Error SW Notif:", e);
+            }
+
+            // Intento 2: Fallback API estándar
+            try {
+                new Notification(title, options);
+            } catch (e) {
+                console.log("Error Native Notif:", e);
+            }
+        };
 
         // --- HELPER PARA ICONOS ---
         const LucideIcon = ({ name, size = 24, className = "" }) => {
@@ -164,7 +201,7 @@
                         onClick={onExit}
                         className="mb-8 px-6 py-3 rounded-full border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-sm font-bold flex items-center gap-2"
                     >
-                        <LogOut size={16}/> Nueva Mesa
+                        <LogOut size={16}/> Volver al Inicio
                     </button>
                 )}
 
@@ -301,27 +338,25 @@
                         
                         const pendings = loadedRequests.filter(r => r.status === 'pending');
                         if (pendings.length > prevRequestsLength.current) {
-                            setMediaMuted(false); 
-                            
+                            // NUEVA ORDEN DETECTADA
+                            setMediaMuted(false); // Reactivar alarma si estaba muteada
+                            const newOrder = pendings[0];
+                            const notifTitle = "¡NUEVO PEDIDO!";
+                            const notifBody = `Mesa: ${newOrder.tableId}${newOrder.message ? ' - ' + newOrder.message : ''}`;
+
+                            // Actualizar Reproductor Multimedia (Pantalla Bloqueo)
                             if (isSystemActive && "mediaSession" in navigator) {
                                 navigator.mediaSession.metadata = new MediaMetadata({
-                                    title: "🚨 NUEVO PEDIDO 🚨",
-                                    artist: `Mesa: ${pendings[0].tableId}`,
+                                    title: "🚨 " + notifTitle + " 🚨",
+                                    artist: notifBody,
                                     album: "Bar Sanchez",
                                     artwork: [{ src: "https://i.imgur.com/crEnZHt.png", sizes: "512x512", type: "image/png" }]
                                 });
                                 if (silentAudioRef.current) silentAudioRef.current.play().catch(()=>{});
                             }
 
-                            if (document.hidden && Notification.permission === "granted") {
-                                try {
-                                    new Notification("¡NUEVO PEDIDO!", { 
-                                        body: `Mesa: ${pendings[0].tableId}${pendings[0].message ? ' - ' + pendings[0].message : ''}`,
-                                        icon: "https://i.imgur.com/crEnZHt.png",
-                                        tag: "pedido-bar" 
-                                    });
-                                } catch(e) {}
-                            }
+                            // Enviar Notificación Visual (Service Worker o Nativa)
+                            sendNotification(notifTitle, notifBody);
                         }
                         
                         prevRequestsLength.current = pendings.length;
@@ -424,10 +459,7 @@
                 const newState = !isStoreOpen;
                 if (confirm(newState ? "¿ABRIR el bar?" : "¿CERRAR el bar? Finalizará el turno actual.")) {
                     if (isDemoMode) { setIsStoreOpen(newState); return; }
-                    try { 
-                        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'app_settings', 'global'), { isOpen: newState }); 
-                        // SI CERRAMOS TURNO, opcionalmente podríamos borrar sesión, pero el cliente prefiere mantenerla.
-                    } 
+                    try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'app_settings', 'global'), { isOpen: newState }); } 
                     catch(e) { alert("Error permisos."); }
                 }
             };
@@ -520,9 +552,7 @@
             };
 
             const handleSimulateRequest = async () => {
-                if (Notification.permission === "granted") {
-                    new Notification("Prueba", { body: "Sistema OK.", icon: "https://i.imgur.com/crEnZHt.png" });
-                }
+                sendNotification("Prueba", "Sistema Operativo OK");
                 if (isDemoMode) {
                     const newReq = { id: Math.random().toString(), tableId: 'Mesa Prueba', status: 'pending', timestamp: { seconds: Date.now()/1000 }, message: 'Simulacro Demo' };
                     setRequests(prev => [newReq, ...prev]);
