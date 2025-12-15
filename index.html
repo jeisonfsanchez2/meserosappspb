@@ -67,12 +67,10 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // --- SERVICE WORKER INTEGRADO (Para notificaciones robustas en Android) ---
+        // --- SERVICE WORKER INTEGRADO (Anti-Sueño) ---
         const swCode = `
             self.addEventListener('install', (event) => self.skipWaiting());
             self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
-            
-            // Evento para mostrar notificaciones cuando la app está en segundo plano
             self.addEventListener('message', (event) => {
                 if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
                     self.registration.showNotification(event.data.title, {
@@ -90,49 +88,28 @@
         const swUrl = URL.createObjectURL(swBlob);
 
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register(swUrl)
-                .then(reg => console.log('Service Worker registrado', reg))
-                .catch(err => console.log('Error SW', err));
+            navigator.serviceWorker.register(swUrl).catch(err => console.log('Error SW', err));
         }
 
-        // Función Helper para enviar notificaciones usando el SW
         const sendNotification = async (title, body) => {
             if (Notification.permission !== "granted") return;
-
-            // Intento 1: Usar Service Worker (Banner Nativo Android más confiable)
             try {
                 const reg = await navigator.serviceWorker.ready;
                 if (reg && reg.active) {
-                    reg.active.postMessage({
-                        type: 'SHOW_NOTIFICATION',
-                        title: title,
-                        body: body
-                    });
+                    reg.active.postMessage({ type: 'SHOW_NOTIFICATION', title, body });
                     return;
                 }
-            } catch (e) {
-                console.log("Error SW Notif:", e);
-            }
-
-            // Intento 2: Fallback API estándar
+            } catch (e) {}
             try {
-                new Notification(title, {
-                    body: body,
-                    icon: "https://i.imgur.com/crEnZHt.png",
-                    vibrate: [200, 100, 200],
-                    tag: "pedido-bar",
-                    renotify: true
-                });
-            } catch (e) {
-                console.log("Error Native Notif:", e);
-            }
+                new Notification(title, { body, icon: "https://i.imgur.com/crEnZHt.png", vibrate: [200, 100, 200], tag: "pedido-bar", renotify: true });
+            } catch (e) {}
         };
 
-        // --- HELPER PARA ICONOS ---
+        // --- HELPER ICONOS ---
         const LucideIcon = ({ name, size = 24, className = "" }) => {
             const [svgHtml, setSvgHtml] = useState(null);
             useEffect(() => {
-                const pascalName = name.replace(/(^\w|-\w)/g, (clear) => clear.replace('-', '').toUpperCase());
+                const pascalName = name.replace(/(^\w|-\w)/g, (c) => c.replace('-', '').toUpperCase());
                 if (window.lucide && window.lucide.icons && window.lucide.icons[pascalName]) {
                     const iconDef = window.lucide.icons[pascalName];
                     if (typeof window.lucide.createElement === 'function') {
@@ -148,7 +125,6 @@
             return <span dangerouslySetInnerHTML={{ __html: svgHtml }} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} />;
         };
 
-        // Iconos
         const Bell = (p) => <LucideIcon name="bell" {...p} />;
         const CheckCircle = (p) => <LucideIcon name="check-circle" {...p} />;
         const QrCode = (p) => <LucideIcon name="qr-code" {...p} />;
@@ -172,62 +148,67 @@
         const Smartphone = (p) => <LucideIcon name="smartphone" {...p} />;
         const Radio = (p) => <LucideIcon name="radio" {...p} />;
         const PauseCircle = (p) => <LucideIcon name="pause-circle" {...p} />;
+        const Eye = (p) => <LucideIcon name="eye" {...p} />;
 
-        // --- COMPONENTE LOGO ---
         const BarLogo = ({ className = "", size = "h-16" }) => (
             <div className={`flex items-center justify-center ${className}`}>
-                <img 
-                src="https://i.imgur.com/crEnZHt.png" 
-                alt="Bar Sanchez" 
-                className={`${size} w-auto rounded-lg shadow-lg border-2 border-slate-800 bg-slate-900`}
-                onError={(e) => { e.currentTarget.src = 'https://placehold.co/100x100/e2e8f0/1e293b?text=BAR'; }}
-                />
+                <img src="https://i.imgur.com/crEnZHt.png" alt="Bar Sanchez" className={`${size} w-auto rounded-lg shadow-lg border-2 border-slate-800 bg-slate-900`} onError={(e) => { e.currentTarget.src = 'https://placehold.co/100x100/e2e8f0/1e293b?text=BAR'; }} />
             </div>
         );
 
-        // --- COMPONENTE DESPEDIDA REUTILIZABLE ---
+        // --- PANTALLAS DE SALIDA ---
         const GoodbyeScreen = ({ title, subtitle, onExit }) => (
             <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-white text-center font-sans fade-in">
                 <div className="mb-8 relative">
                     <div className="absolute inset-0 bg-blue-600 blur-3xl opacity-20 rounded-full"></div>
                     <BarLogo size="h-40" className="relative z-10" />
                 </div>
-                
                 <h1 className="text-4xl font-black mb-4 tracking-tight text-white">{title}</h1>
                 <div className="w-24 h-1 bg-amber-500 mb-6 rounded-full mx-auto"></div>
-                
                 <p className="text-xl text-slate-300 mb-12 leading-relaxed max-w-md mx-auto" dangerouslySetInnerHTML={{ __html: subtitle }}></p>
-
                 {onExit && (
-                    <button 
-                        onClick={onExit}
-                        className="mb-8 px-6 py-3 rounded-full border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-sm font-bold flex items-center gap-2"
-                    >
+                    <button onClick={onExit} className="mb-8 px-6 py-3 rounded-full border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-sm font-bold flex items-center gap-2">
                         <LogOut size={16}/> Volver al Inicio
                     </button>
                 )}
-
                 <div className="absolute bottom-6 flex items-center gap-2 text-slate-600 text-xs uppercase tracking-widest">
                     <Moon size={14} /> <span>Bar Sanchez • Hasta pronto</span>
                 </div>
             </div>
         );
 
-        // --- MOTOR DE AUDIO ---
+        // --- MOTOR AUDIO & KEEP ALIVE ---
         const audioCtxRef = { current: null };
         const oscillatorRef = { current: null };
         const intervalRef = { current: null };
         const silentAudioRef = { current: null };
+        const keepAliveOscRef = { current: null };
+
+        const startKeepAliveEngine = () => {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+            const ctx = audioCtxRef.current;
+            if (ctx.state === 'suspended') ctx.resume();
+
+            if (!keepAliveOscRef.current) {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 1; 
+                gain.gain.value = 0.001;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                keepAliveOscRef.current = osc;
+            }
+        };
 
         const startPersistentAlarm = (soundEnabled = true, isMutedByMedia = false) => {
             if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500, 1000]);
-            
+            startKeepAliveEngine();
+
             if (soundEnabled && !isMutedByMedia) {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
                 const ctx = audioCtxRef.current;
-                if (ctx.state === 'suspended') ctx.resume();
-                
                 if (!oscillatorRef.current) {
                     const oscillator = ctx.createOscillator();
                     const gainNode = ctx.createGain();
@@ -275,31 +256,31 @@
             const [view, setView] = useState(() => {
                 const params = new URLSearchParams(window.location.search);
                 const modeParam = params.get('mode');
-                // Si hay sesión guardada de admin, entrar como admin
-                const savedAdminSession = localStorage.getItem('bar_admin_session');
+                const savedAdminSession = localStorage.getItem('bar_admin_device_active');
+                
+                // Si URL dice admin O hay sesión de dispositivo guardada -> Admin
                 if (modeParam === 'admin' || savedAdminSession === 'true') {
-                    if (modeParam === 'admin') localStorage.setItem('bar_admin_session', 'true');
+                    if (modeParam === 'admin') localStorage.setItem('bar_admin_device_active', 'true');
                     return 'admin';
                 }
-                // Si no, SIEMPRE cliente por defecto
+                // Cualquier otro caso (link simple) -> Cliente
                 return 'customer';
             });
 
             const [activeTableName, setActiveTableName] = useState(null);
-            
-            // ESTADOS
             const [requests, setRequests] = useState([]);
             const [activeSessions, setActiveSessions] = useState([]); 
             const [isStoreOpen, setIsStoreOpen] = useState(true);
-            const [isSystemActive, setIsSystemActive] = useState(false);
-            const [loading, setLoading] = useState(true);
             
+            // isSystemActive inicializado desde localStorage
+            const [isSystemActive, setIsSystemActive] = useState(() => localStorage.getItem('bar_admin_device_active') === 'true');
+            
+            const [loading, setLoading] = useState(true);
             const [sessionEnded, setSessionEnded] = useState(false);
             const [permissionError, setPermissionError] = useState(false); 
             const [isDemoMode, setIsDemoMode] = useState(false); 
             const [soundEnabled, setSoundEnabled] = useState(true); 
             const [mediaMuted, setMediaMuted] = useState(false); 
-            
             const [notificationPermission, setNotificationPermission] = useState("default");
             const [wakeLockActive, setWakeLockActive] = useState(false);
 
@@ -326,13 +307,26 @@
                             if (savedTable) setActiveTableName(savedTable);
                         }
                     }
-                    try { await signInAnonymously(auth); } catch (e) { console.error("Error Auth:", e); }
+                    try { await signInAnonymously(auth); } catch (e) { console.error("Auth error", e); }
                     if ("Notification" in window) setNotificationPermission(Notification.permission);
                 };
                 init();
                 const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
-                return () => unsubscribe();
-            }, []);
+
+                // TRAMPA DE RECUPERACIÓN DE AUDIO AL RECARGAR
+                const resumeAudioOnInteraction = () => {
+                    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+                    if (isSystemActive) startKeepAliveEngine();
+                };
+                window.addEventListener('click', resumeAudioOnInteraction);
+                window.addEventListener('touchstart', resumeAudioOnInteraction);
+
+                return () => {
+                    unsubscribe();
+                    window.removeEventListener('click', resumeAudioOnInteraction);
+                    window.removeEventListener('touchstart', resumeAudioOnInteraction);
+                };
+            }, [view, isSystemActive]);
 
             // 2. Data Listeners
             useEffect(() => {
@@ -348,20 +342,21 @@
                         const pendings = loadedRequests.filter(r => r.status === 'pending');
                         if (pendings.length > prevRequestsLength.current) {
                             setMediaMuted(false); 
+                            const newOrder = pendings[0];
+                            const title = "¡NUEVO PEDIDO!";
+                            const body = `Mesa: ${newOrder.tableId} ${newOrder.message ? '- ' + newOrder.message : ''}`;
                             
                             if (isSystemActive && "mediaSession" in navigator) {
                                 navigator.mediaSession.metadata = new MediaMetadata({
-                                    title: "🚨 NUEVO PEDIDO 🚨",
-                                    artist: `Mesa: ${pendings[0].tableId}`,
+                                    title: "🚨 " + title,
+                                    artist: body,
                                     album: "Bar Sanchez",
                                     artwork: [{ src: "https://i.imgur.com/crEnZHt.png", sizes: "512x512", type: "image/png" }]
                                 });
                                 if (silentAudioRef.current) silentAudioRef.current.play().catch(()=>{});
                             }
-
-                            sendNotification("¡NUEVO PEDIDO!", `Mesa: ${pendings[0].tableId}${pendings[0].message ? ' - ' + pendings[0].message : ''}`);
+                            sendNotification(title, body);
                         }
-                        
                         prevRequestsLength.current = pendings.length;
                         setRequests(loadedRequests);
                     }, 
@@ -385,7 +380,7 @@
                 return () => { unsubReq(); unsubSet(); unsubSess(); };
             }, [user, isDemoMode]);
 
-            // 3. Listener Cliente (Expulsión)
+            // 3. Listener Expulsión
             useEffect(() => {
                 if (!user || isDemoMode || view !== 'customer' || !activeTableName) return;
                 const mySessionRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', activeTableName);
@@ -416,9 +411,12 @@
             
             const activateSystem = async () => {
                 setIsSystemActive(true);
+                localStorage.setItem('bar_admin_device_active', 'true');
+
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 ctx.resume();
                 audioCtxRef.current = ctx;
+                startKeepAliveEngine();
 
                 if (!silentAudioRef.current) {
                     const silentAudio = new Audio("data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==");
@@ -432,14 +430,8 @@
                             album: "Esperando pedidos...",
                             artwork: [{ src: "https://i.imgur.com/crEnZHt.png", sizes: "512x512", type: "image/png" }]
                         });
-                        navigator.mediaSession.setActionHandler('pause', function() {
-                            setMediaMuted(true); 
-                            silentAudio.pause(); 
-                        });
-                        navigator.mediaSession.setActionHandler('play', function() {
-                            setMediaMuted(false); 
-                            silentAudio.play();
-                        });
+                        navigator.mediaSession.setActionHandler('pause', () => setMediaMuted(true));
+                        navigator.mediaSession.setActionHandler('play', () => setMediaMuted(false));
                     }
                     silentAudio.play().catch(e=>{});
                     silentAudioRef.current = silentAudio;
@@ -460,19 +452,21 @@
 
             const toggleStoreStatus = async () => {
                 const newState = !isStoreOpen;
-                // MENSAJE CLARO DE ADVERTENCIA
-                if (confirm(newState ? "¿ABRIR el bar?" : "¿CERRAR el bar? Esto finalizará el turno actual.")) {
+                if (confirm(newState ? "¿ABRIR el bar?" : "¿CERRAR el bar? Finalizará el turno actual.")) {
                     if (isDemoMode) { setIsStoreOpen(newState); return; }
                     try { 
                         await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'app_settings', 'global'), { isOpen: newState }); 
-                        // MANTENEMOS LA SESIÓN DEL ADMIN ACTIVA AUNQUE CIERRE TURNO
+                        if (!newState) {
+                            localStorage.removeItem('bar_admin_device_active');
+                            setIsSystemActive(false);
+                        }
                     } 
                     catch(e) { alert("Error permisos."); }
                 }
             };
 
             const closeTableSession = async (tableId) => {
-                if(!confirm(`¿Liberar mesa: ${tableId}?`)) return;
+                if(!confirm(`¿Liberar mesa: ${tableId}? El cliente verá el mensaje de despedida.`)) return;
                 try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'active_sessions', tableId)); } catch(e) { console.error(e); }
             };
 
@@ -595,7 +589,7 @@
 
             if (loading) return <div className="h-screen flex items-center justify-center bg-gray-100">Cargando...</div>;
 
-            // PANTALLA 1: CIERRE GLOBAL (Admin cerró turno)
+            // PANTALLA 1: CIERRE GLOBAL (Admin cerró turno) -> SIN BOTÓN DE SALIDA
             if (!isStoreOpen && view !== 'admin') {
                 return <GoodbyeScreen 
                     title="¡Gracias por tu visita!" 
@@ -603,7 +597,7 @@
                 />;
             }
 
-            // PANTALLA 2: CIERRE INDIVIDUAL (Admin liberó la mesa)
+            // PANTALLA 2: CIERRE INDIVIDUAL (Admin liberó la mesa) -> REDIRIGE A SELECCIÓN MESA
             if (sessionEnded && view !== 'admin') {
                 return <GoodbyeScreen 
                     title="¡Hasta Pronto!" 
@@ -685,7 +679,7 @@
                                 <div className="text-center py-10 opacity-50">
                                     <CheckCircle size={60} className="mx-auto text-gray-300 mb-2" />
                                     <p className="text-gray-400 font-bold">Sin pedidos pendientes</p>
-                                    <button onClick={handleSimulateRequest} className="mt-4 text-xs bg-gray-200 px-3 py-1 rounded text-gray-500">Probar Notificación</button>
+                                    <button onClick={handleSimulateRequest} className="mt-4 text-xs bg-gray-200 px-3 py-1 rounded text-gray-500 flex items-center justify-center gap-2 mx-auto"><Eye size={14}/> Probar Notificación</button>
                                 </div>
                             ) : (
                                 <div className="space-y-4">
@@ -752,7 +746,7 @@
                 );
             }
 
-            // Landing (Solo se muestra brevemente o si el usuario admin sale)
+            // Landing (Solo visible si el admin vuelve atrás manualmente)
             if (view === 'landing') {
                 return (
                     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white font-sans">
