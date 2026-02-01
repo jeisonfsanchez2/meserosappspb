@@ -9,12 +9,12 @@
     <!-- 1. Estilos: Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. React y ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- 2. React y ReactDOM (Versiones Estables Fijadas) -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
     
-    <!-- 3. Babel para traducir el código -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 3. Babel (Versión Estable) -->
+    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
 
     <!-- 4. Librería de Iconos Lucide -->
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -36,7 +36,8 @@
 <body class="bg-slate-900 text-slate-900">
     <div id="root"></div>
 
-    <script type="text/babel" data-type="module">
+    <!-- CORRECCIÓN APLICADA: data-presets="react" (Quitamos 'env' para evitar error de require) -->
+    <script type="text/babel" data-type="module" data-presets="react">
         // ==========================================
         // 1. CONFIGURACIÓN DE FIREBASE (PRODUCCIÓN)
         // ==========================================
@@ -248,7 +249,7 @@
             if (oscillatorRef.current) { try { oscillatorRef.current.stop(); oscillatorRef.current.disconnect(); } catch(e){} oscillatorRef.current = null; }
         };
 
-        // --- APP PRINCIPAL ---
+        // --- APP ---
         function App() {
             const [user, setUser] = useState(null);
             
@@ -258,12 +259,10 @@
                 const modeParam = params.get('mode');
                 const savedAdminSession = localStorage.getItem('bar_admin_device_active');
                 
-                // Si URL dice admin O hay sesión de dispositivo guardada -> Admin
                 if (modeParam === 'admin' || savedAdminSession === 'true') {
                     if (modeParam === 'admin') localStorage.setItem('bar_admin_device_active', 'true');
                     return 'admin';
                 }
-                // Cualquier otro caso (link simple) -> Cliente
                 return 'customer';
             });
 
@@ -272,7 +271,6 @@
             const [activeSessions, setActiveSessions] = useState([]); 
             const [isStoreOpen, setIsStoreOpen] = useState(true);
             
-            // isSystemActive inicializado desde localStorage
             const [isSystemActive, setIsSystemActive] = useState(() => localStorage.getItem('bar_admin_device_active') === 'true');
             
             const [loading, setLoading] = useState(true);
@@ -298,7 +296,6 @@
                     const params = new URLSearchParams(window.location.search);
                     const tableParam = params.get('table');
 
-                    // Si estamos en modo cliente y hay mesa en URL o LocalStorage, cargarla
                     if (view === 'customer') {
                         if (tableParam) {
                             handleTableSelection(tableParam);
@@ -307,13 +304,12 @@
                             if (savedTable) setActiveTableName(savedTable);
                         }
                     }
-                    try { await signInAnonymously(auth); } catch (e) { console.error("Auth error", e); }
+                    try { await signInAnonymously(auth); } catch (e) { console.error("Error Auth:", e); }
                     if ("Notification" in window) setNotificationPermission(Notification.permission);
                 };
                 init();
                 const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
 
-                // TRAMPA DE RECUPERACIÓN DE AUDIO AL RECARGAR
                 const resumeAudioOnInteraction = () => {
                     if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
                     if (isSystemActive) startKeepAliveEngine();
